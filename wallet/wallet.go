@@ -1,8 +1,8 @@
 package wallet
 
 import (
-	"bytes"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"log"
 
 	"../blockchain"
@@ -34,8 +34,20 @@ func SignData(dataString string, key string) ([]byte, error) {
 	return signature, nil
 }
 
+func ValidateSignature(data string, signature []byte, publicKey string) (bool, error) {
+	dataByte := []byte(data)
+	hash := crypto.Keccak256Hash(dataByte)
+	sigPublicKey, err := crypto.Ecrecover(hash.Bytes(), signature)
+	if err != nil {
+		return false, err
+	}
+	matches := hex.EncodeToString(sigPublicKey) == publicKey
+
+	return matches, nil
+}
+
 //ValidateSignature will check if message was not changed
-func ValidateSignature(transaction blockchain.Transaction, signature []byte) (bool, error) {
+func ValidateTransaction(transaction blockchain.Transaction, signature []byte) (bool, error) {
 	transactionJSON, err := transaction.EncodeToJSON()
 	if err != nil {
 		return false, err
@@ -48,7 +60,7 @@ func ValidateSignature(transaction blockchain.Transaction, signature []byte) (bo
 		return false, err
 	}
 
-	matches := bytes.Equal(sigPublicKey, transaction.FromAddress)
+	matches := hex.EncodeToString(sigPublicKey) == transaction.FromAddress
 
 	return matches, nil
 }

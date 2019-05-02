@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"../blockchain"
 	"../network"
 	"../wallet"
 	"./helpers"
@@ -50,6 +51,7 @@ func PostRegister(w http.ResponseWriter, r *http.Request) {
 		for _, account := range accounts {
 			if account.Username == username {
 				fmt.Fprintln(w, "This username already created!")
+				return
 			}
 		}
 		privateKey, publicKey := wallet.GenerateKey()
@@ -63,7 +65,7 @@ func PostRegister(w http.ResponseWriter, r *http.Request) {
 		network.SendNewAccount(accountJSON)
 		fmt.Fprintln(w, "Username for Register : ", username)
 		fmt.Fprintln(w, "Password for Register : ", password)
-		fmt.Fprintln(w, "Your private key, save it: ", string(privateKey))
+		fmt.Fprintln(w, "Your private key, save it: ", hex.EncodeToString(privateKey))
 	} else {
 		fmt.Fprintln(w, "Username for Register : ", username)
 		fmt.Fprintln(w, "Password for Register : ", password)
@@ -89,7 +91,7 @@ func PostLogin(w http.ResponseWriter, r *http.Request) {
 		// Database check for user data!
 		for _, account := range accounts {
 			if account.CheckAccount(username, password) {
-				helpers.SetCookie(username, string(account.PublicKey), w)
+				helpers.SetCookie(username, hex.EncodeToString(account.PublicKey), w)
 				redirectTarget = "/"
 			}
 		}
@@ -123,8 +125,10 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		choice := r.FormValue("choice")
 		gameValue, _ := strconv.ParseFloat(r.FormValue("gameValue"), 32)
-		privateKey := r.FormValue("key")
-		dealerHash := sha3.Sum256([]byte(choice + privateKey))
+		secretNumber := r.FormValue("secretNumber")
+		// privateKey := r.FormValue("privateKey")
+
+		dealerHash := sha3.Sum256([]byte(choice + secretNumber))
 		game := models.Game{
 			ID:           1,
 			Dealer:       publicKey,
@@ -136,7 +140,17 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 			Result:       0,
 			Closed:       false,
 		}
-		fmt.Println(w, game)
+		gameJSON, _ := game.EncodeToJSON()
+		data := models.Data{
+			FunctionName: "CreateGame",
+			Args:         gameJSON,
+		}
+		dataJSON, _ := data.EncodeToJSON()
+		transaction := blockchain.Transaction{
+			FromAddress: publicKey,
+			Data:        dataJSON,
+		}
+		fmt.Println(w, transaction)
 	}
 }
 

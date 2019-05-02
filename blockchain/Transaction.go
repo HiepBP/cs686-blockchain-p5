@@ -5,8 +5,8 @@ import "encoding/json"
 //Transaction will be handle and validate by Miner
 type Transaction struct {
 	ID          string
-	FromAddress []byte  `json:"from"`  //PublicKey
-	ToAddress   []byte  `json:"to"`    //PublicKey
+	FromAddress string  `json:"from"`  //PublicKey
+	ToAddress   string  `json:"to"`    //PublicKey
 	Value       float32 `json:"value"` //Money
 	Data        string  `json:"data"`  //Data of the game
 }

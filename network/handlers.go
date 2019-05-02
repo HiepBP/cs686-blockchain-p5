@@ -70,7 +70,7 @@ func StartMiner(w http.ResponseWriter, r *http.Request) {
 		SELF_ADDR = "http://" + r.Host
 		Download()
 	}
-	_, publicKey := wallet.GenerateKey()
+	privateKey, publicKey := wallet.GenerateKey()
 	mineAddress = string(publicKey)
 	newAccount := models.Account{
 		PublicKey: publicKey,
@@ -79,8 +79,8 @@ func StartMiner(w http.ResponseWriter, r *http.Request) {
 	SendNewAccount(accountJSON)
 	//Start sending HeartBeat
 	go startHeartBeat()
-	// fmt.Fprintln(w, "You public key: ", string(publicKey))
-	// fmt.Fprintln(w, "Your private key: ", string(privateKey))
+	fmt.Fprintln(w, "You public key: ", hex.EncodeToString(publicKey))
+	fmt.Fprintln(w, "Your private key: ", hex.EncodeToString(privateKey))
 }
 
 // Show will Display peerList and sbc
@@ -390,7 +390,7 @@ func validateBalance(publicKey string, amount float32) bool {
 }
 
 func validateTx(tx blockchain.SignedTransaction) bool {
-	result, _ := wallet.ValidateSignature(tx.Transaction, tx.Signature)
+	result, _ := wallet.ValidateTransaction(tx.Transaction, tx.Signature)
 	if !result {
 		fmt.Println("Signature not correct")
 		return false
