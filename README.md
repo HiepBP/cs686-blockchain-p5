@@ -34,15 +34,15 @@ Transaction contains: ID, FromAddress, ToAddress, Value and Data.<br>
 How transaction be signed and send through network.<br/>
 
 ## Progress
-[x] Basic UI
-[x] Register and generate public, private key
-[x] Sign Tx function
-[x] Validate Tx is signed by a correct one
-[x] Send account(public key) to other peers when create.
-[] Classify Tx (Transfer coin Tx or Logic Tx)
-[] Miner validate transaction is signed correctly
-[] Miner balance for each transaction
-[] Miner handle logic code to creat game
-[] Miner handle logic code to join game
-[] Miner handle logic code to reveal choice and close game
-[] User can see the game information
+[x] Basic UI  
+[x] Register and generate public, private key  
+[x] Sign Tx function  
+[x] Validate Tx is signed by a correct one  
+[x] Send account(public key) to other peers when create.  
+[] Classify Tx (Transfer coin Tx or Logic Tx)  
+[] Miner validate transaction is signed correctly  
+[] Miner balance for each transaction  
+[] Miner handle logic code to creat game  
+[] Miner handle logic code to join game  
+[] Miner handle logic code to reveal choice and close game  
+[] User can see the game information  
