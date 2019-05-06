@@ -1,14 +1,22 @@
-package blockchain
+package bc
 
-import "encoding/json"
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/gob"
+	"encoding/json"
+	"log"
+
+	"../mpt"
+)
 
 //Transaction will be handle and validate by Miner
 type Transaction struct {
-	ID          string
-	FromAddress string  `json:"from"`  //PublicKey
-	ToAddress   string  `json:"to"`    //PublicKey
-	Value       float32 `json:"value"` //Money
-	Data        string  `json:"data"`  //Data of the game
+	ID          string `json:"id"`
+	FromAddress string `json:"fromAddress"` //PublicKey
+	ToAddress   string `json:"toAddress"`   //PublicKey
+	Value       int    `json:"value"`       //Money
+	Data        string `json:"data"`        //Data of the game
 }
 
 //SignedTransaction will be send between nodes in Network
@@ -63,4 +71,68 @@ func (signedTransaction *SignedTransaction) EncodeToJSON() (string, error) {
 	}
 	result = string(signedTransactionByte)
 	return result, nil
+}
+
+func (tx *Transaction) Hash() []byte {
+	var hash [32]byte
+
+	hash = sha256.Sum256(tx.Serialize())
+
+	return hash[:]
+}
+
+func (tx Transaction) Serialize() []byte {
+	var encoded bytes.Buffer
+
+	enc := gob.NewEncoder(&encoded)
+	err := enc.Encode(tx)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return encoded.Bytes()
+}
+
+func DeserializeTransaction(data []byte) Transaction {
+	var transaction Transaction
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	err := decoder.Decode(&transaction)
+	if err != nil {
+		log.Panic(err)
+	}
+	return transaction
+}
+
+func GetSignedTxsFromMPT(txsTrie mpt.MerklePatriciaTrie) []SignedTransaction {
+	var result []SignedTransaction
+	for key := range txsTrie.KeyVal {
+		signedTxJSON, err := txsTrie.Get(key)
+		if err != nil {
+			panic(err)
+		} else {
+			signedTx, _ := DecodeSignedTransactionFromJSON(signedTxJSON)
+			result = append(result, signedTx)
+		}
+	}
+	return result
+}
+
+func AddTransaction(accountTrie mpt.MerklePatriciaTrie,
+	signedTxsTrie mpt.MerklePatriciaTrie) mpt.MerklePatriciaTrie {
+	signedTxs := GetSignedTxsFromMPT(signedTxsTrie)
+	for _, signedTx := range signedTxs {
+		tx := signedTx.Transaction
+		FromAccountJSON, _ := accountTrie.Get(tx.FromAddress)
+		ToAccountJSON, _ := accountTrie.Get(tx.ToAddress)
+		FromAccount, _ := DecodeAccountFromJSON(FromAccountJSON)
+		ToAccount, _ := DecodeAccountFromJSON(ToAccountJSON)
+		FromAccount.Balance = FromAccount.Balance - tx.Value
+		ToAccount.Balance = ToAccount.Balance + tx.Value
+		FromAccountJSON, _ = FromAccount.EncodeToJSON()
+		ToAccountJSON, _ = ToAccount.EncodeToJSON()
+		accountTrie.Insert(tx.FromAddress, FromAccountJSON)
+		accountTrie.Insert(tx.ToAddress, ToAccountJSON)
+	}
+	return accountTrie
 }

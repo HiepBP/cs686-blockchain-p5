@@ -9,7 +9,7 @@ type Game struct {
 	DealerHash   string
 	Player       string
 	PlayerChoice uint32
-	GameValue    float32
+	GameValue    int
 	Result       uint32
 	Closed       bool
 }

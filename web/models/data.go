@@ -2,13 +2,13 @@ package models
 
 import "encoding/json"
 
-type Data struct {
-	FunctionName string
-	Args         string
+type UserMsg struct {
+	Signature string `json:"signature"`
+	Data      string `json:"data"`
 }
 
-func DecodeDataFromJSON(jsonString string) (Data, error) {
-	var result Data
+func DecodeUserMsgFromJSON(jsonString string) (UserMsg, error) {
+	var result UserMsg
 
 	err := json.Unmarshal([]byte(jsonString), &result)
 	if err != nil {
@@ -17,7 +17,7 @@ func DecodeDataFromJSON(jsonString string) (Data, error) {
 	return result, nil
 }
 
-func (data *Data) EncodeToJSON() (string, error) {
+func (data *UserMsg) EncodeToJSON() (string, error) {
 	var result string
 
 	dataByte, err := json.Marshal(&data)

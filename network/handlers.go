@@ -13,32 +13,43 @@ import (
 	"strconv"
 	"time"
 
-	"../blockchain"
+	bc "../blockchain"
 	"../mpt"
 	"../utils"
 	"../wallet"
-	"../web/models"
 	"./data"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/sha3"
 )
 
 var (
-	mineAddress        string
-	blocksInTransit    = [][]byte{}
-	memoryPool         = make(map[string]blockchain.Transaction)
-	confirmedTx        = make(map[string]bool)
-	SBC                data.SyncBlockChain
-	Peers              data.PeerList
 	FIRST_ADDR         = "http://localhost:8081"
 	PEERS_DOWNLOAD_URL = FIRST_ADDR + "/peers"
+	SELF_ADDR          = "http://localhost:8081"
+	MAX_PEER           = 32
 
-	SELF_ADDR       = "http://localhost:8081"
-	MAX_PEER        = 32
-	ifStarted       = false
-	heartBeatRevice = false
-	keyString       = "000000"
-	accounts        mpt.MerklePatriciaTrie
+	mineAddress         string
+	blocksInTransit     = [][]byte{}
+	memoryPool          = make(map[string]*bc.SignedTransaction)
+	confirmedTx         = make(map[string]bool)
+	SBC                 data.SyncBlockChain
+	Peers               data.PeerList
+	ifStarted           = false
+	heartBeatRevice     = false
+	keyString           = "00000"
+	accounts            = make(map[string]*mpt.MerklePatriciaTrie)
+	ContractAddress     = "636f6e7472616374"
+	CreateGameAddress   = "636f6e7472616374637265617465"
+	JoinGameAddress     = "636f6e74726163746a6f696e"
+	RevealChoiceAddress = "636f6e747261637472657665616c"
+	MinerAddresses      = []string{
+		"0480f8b87e2e2caedab0af1fe2975317de5c8d3146c515493ce21c9d90616923bfa12069a22afee549bb3b666af9dfe26e2543a2ba0263fecaaa60e38cdb0221d1",
+		"041f5c565ffee4cf280295d864efd438e704894179cfdc552d83961f6eda877ad55cb2c46048c6cb96749a9b27c5ccdd7717b8647cccda07f145705879585ac271",
+	}
+	UserAddresses = []string{
+		"0461ca35768e3960c76e881c2b2f543ae6c298f78fba9473f5b0da57f735dbb317f993575602ff7b6969fa423fb12b8fad88a9c1575aa5bc479d47ce0287ec7b2f",
+		"04b31f6e431138d297df326efe3276e1dc7fd5aba95a8a303a8ebcbf81614dfba409f3da10b4a3537e8cc5ad30cbace338c25104a11a90f80820a4f79707ebbc58",
+	}
 )
 
 func StartBlockChain(w http.ResponseWriter, r *http.Request) {
@@ -51,12 +62,31 @@ func StartBlockChain(w http.ResponseWriter, r *http.Request) {
 	_, portStr, _ := net.SplitHostPort(r.Host)
 	portNumber, _ := strconv.Atoi(portStr)
 	initPeer(int32(portNumber))
-	createGenesisBlock()
-	fmt.Fprintf(w, "Blockchain init")
+	currentAccounts := mpt.MerklePatriciaTrie{}
+	currentAccounts.Initial()
+
+	gameContract := bc.Account{1000, ""}
+	gameContractJSON, _ := gameContract.EncodeToJSON()
+	currentAccounts.Insert(ContractAddress, gameContractJSON)
+
+	for _, address := range MinerAddresses {
+		mineAccount := bc.Account{1000, ""}
+		mineAccountJSON, _ := mineAccount.EncodeToJSON()
+		currentAccounts.Insert(address, mineAccountJSON)
+	}
+	for _, address := range UserAddresses {
+		userAccount := bc.Account{1000, ""}
+		userAccountJSON, _ := userAccount.EncodeToJSON()
+		currentAccounts.Insert(address, userAccountJSON)
+	}
+	accounts[currentAccounts.Root] = &currentAccounts
+	createGenesisBlock(currentAccounts.Root)
 }
 
 //Start will Register ID, download BlockChain, start HeartBeat
 func StartMiner(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	address := vars["publicKey"]
 	if ifStarted {
 		fmt.Fprint(w, "Peer already started\n")
 		return
@@ -70,17 +100,9 @@ func StartMiner(w http.ResponseWriter, r *http.Request) {
 		SELF_ADDR = "http://" + r.Host
 		Download()
 	}
-	privateKey, publicKey := wallet.GenerateKey()
-	mineAddress = string(publicKey)
-	newAccount := models.Account{
-		PublicKey: publicKey,
-	}
-	accountJSON, _ := newAccount.EncodeToJSON()
-	SendNewAccount(accountJSON)
+	mineAddress = address
 	//Start sending HeartBeat
 	go startHeartBeat()
-	fmt.Fprintln(w, "You public key: ", hex.EncodeToString(publicKey))
-	fmt.Fprintln(w, "Your private key: ", hex.EncodeToString(privateKey))
 }
 
 // Show will Display peerList and sbc
@@ -96,6 +118,19 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	}
 	fmt.Fprint(w, blockChainJSON)
+}
+
+// Upload blockchain to whoever called this method, return jsonStr
+func UploadAccounts(w http.ResponseWriter, r *http.Request) {
+	var result []string
+	fmt.Println("Num of accounts trie:", len(accounts))
+	for root, accounts := range accounts {
+		buffer := accounts.Serialize()
+		fmt.Println("Root:", root)
+		result = append(result, hex.EncodeToString(buffer))
+	}
+	resultBytes, _ := json.Marshal(result)
+	fmt.Fprint(w, string(resultBytes))
 }
 
 //UploadPeer will upload a PeerList to whoever called this method, return jsonStr
@@ -147,9 +182,9 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 	Peers.InjectPeerMapJson(heartBeat.PeerMapJson, SELF_ADDR)
 	//Add new block
 	if heartBeat.IfNewBlock {
-		block, _ := blockchain.DecodeFromJSON(heartBeat.BlockJson)
+		block, _ := bc.DecodeFromJSON(heartBeat.BlockJson)
 		//Check PoW
-		y := proofOfWork(block.Header.ParentHash, block.Header.Nonce, block.Value.Root())
+		y := proofOfWork(block.Header.ParentHash, block.Header.Nonce, block.Value.Root)
 		if y[:len(keyString)] != keyString {
 			return
 		}
@@ -157,22 +192,34 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 		if block.Header.ParentHash != "" && !SBC.CheckParentHash(block) {
 			askForBlock(block.Header.Height-1, block.Header.ParentHash)
 		}
-		SBC.Insert(block)
-		heartBeatRevice = true
+		fmt.Println("Block hash: ", block.Header.Hash)
+		fmt.Println("Parent hash: ", block.Header.ParentHash)
+		parentBlock, err := SBC.GetParentBlock(block)
+		if !err {
+			fmt.Println("PARENT BLOCK NOT FOUND")
+			return
+		}
+		fmt.Println("Parent hash: ", parentBlock.Header.Hash)
+		fmt.Println("Header account trie: ", parentBlock.Header.AccountsRoot)
+		valid, txsID := validateReceiveTxsInBlock(block.Value, parentBlock.Header.AccountsRoot)
+		if valid {
+			SBC.Insert(block)
+			newAccountTrie := bc.AddTransaction(*accounts[parentBlock.Header.AccountsRoot], block.Value)
+			if newAccountTrie.Root != block.Header.AccountsRoot {
+				fmt.Println("WEIRD")
+			} else {
+				accounts[newAccountTrie.Root] = &newAccountTrie
+			}
+			deleteConfirmedTx(txsID)
+			heartBeatRevice = true
+		} else {
+			fmt.Println("Txs IN BLOCK INVALID")
+		}
 	}
 	if heartBeat.Hops > 1 {
 		heartBeat.Hops--
 		forwardHeartBeat(heartBeat)
 	}
-}
-
-func NewAccountReceive(w http.ResponseWriter, r *http.Request) {
-	buffer, err := ioutil.ReadAll(r.Body)
-	account, _ := models.DecodeAccountFromJSON(string(buffer))
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-	accounts.Insert(string(account.PublicKey), "2000.0")
 }
 
 //Canonical will prints the current canonical chain, and chains of all forks if there are forks
@@ -183,9 +230,9 @@ func Canonical(w http.ResponseWriter, r *http.Request) {
 		currBlock := block
 		rs += fmt.Sprintf("Chain #%d\n", index+1)
 		for currBlock.Header.Hash != "" {
-			rs += fmt.Sprintf("height=%d, timestamp=%d, hash=%s, parentHash=%s, size=%d\n",
-				currBlock.Header.Height, currBlock.Header.Timestamp, currBlock.Header.Hash,
-				currBlock.Header.ParentHash, currBlock.Header.Size)
+			rs += fmt.Sprintf("height=%d, hash=%s, parentHash=%s, accountsRoot=%s\n",
+				currBlock.Header.Height, currBlock.Header.Hash,
+				currBlock.Header.ParentHash, currBlock.Header.AccountsRoot)
 			currBlock, _ = SBC.GetBlock(currBlock.Header.Height-1, currBlock.Header.ParentHash)
 		}
 		rs += "\n"
@@ -195,12 +242,31 @@ func Canonical(w http.ResponseWriter, r *http.Request) {
 
 func HandleTx(w http.ResponseWriter, r *http.Request) {
 	buffer, _ := ioutil.ReadAll(r.Body)
-	transaction, _ := blockchain.DecodeTransactionFromJSON(string(buffer))
-	//Received tx is already confirmed
-	if confirmedTx[transaction.ID] == true {
+	signedTransaction, _ := bc.DecodeSignedTransactionFromJSON(string(buffer))
+	validSign, _ := wallet.ValidateTxSignature(signedTransaction.Transaction, signedTransaction.Signature)
+	if !validSign {
+		fmt.Println("Invalid signature")
 		return
 	}
-	memoryPool[transaction.ID] = transaction
+	//Received tx is already confirmed
+	if confirmedTx[signedTransaction.Transaction.ID] == true {
+		return
+	}
+	memoryPool[signedTransaction.Transaction.ID] = &signedTransaction
+	startTryingNonces()
+	// if len(memoryPool) >= 2 && len(mineAddress) > 0 {
+	// 	startTryingNonces()
+	// }
+}
+
+func HandleGameCreate(w http.ResponseWriter, r *http.Request) {
+	buffer, _ := ioutil.ReadAll(r.Body)
+	signedTransaction, _ := bc.DecodeSignedTransactionFromJSON(string(buffer))
+	//Received tx is already confirmed
+	if confirmedTx[signedTransaction.Transaction.ID] == true {
+		return
+	}
+	memoryPool[signedTransaction.Transaction.ID] = &signedTransaction
 	if len(memoryPool) >= 2 && len(mineAddress) > 0 {
 		startTryingNonces()
 	}
@@ -208,15 +274,21 @@ func HandleTx(w http.ResponseWriter, r *http.Request) {
 
 func initPeer(portNumber int32) {
 	//Register
-	registerLocal(portNumber)
+	RegisterLocal(portNumber)
 	SBC = data.NewBlockChain()
 }
 
-func registerLocal(id int32) {
+func RegisterLocal(id int32) {
 	Peers = data.NewPeerList(id, int32(MAX_PEER))
 }
 
 func Download() {
+	DownloadPeerList()
+	DownloadBC()
+	DownloadAccounts()
+}
+
+func DownloadPeerList() {
 	//Download peer list from first node
 	selfID := strconv.Itoa(int(Peers.GetSelfId()))
 	response, err := http.Get(PEERS_DOWNLOAD_URL + "/" + html.EscapeString(SELF_ADDR[7:]) + "/" + selfID)
@@ -227,7 +299,9 @@ func Download() {
 		peersJSONBuffer, _ := ioutil.ReadAll(response.Body)
 		Peers.InjectPeerMapJson(string(peersJSONBuffer), SELF_ADDR)
 	}
+}
 
+func DownloadBC() {
 	//Download blockchain from radom peer in peerlist
 	for addr := range Peers.Copy() {
 		response, err := http.Get(addr + "/upload")
@@ -235,6 +309,26 @@ func Download() {
 			bcJSONBuffer, _ := ioutil.ReadAll(response.Body)
 			SBC.UpdateEntireBlockChain(string(bcJSONBuffer))
 			break
+		}
+	}
+}
+
+func DownloadAccounts() {
+	for addr := range Peers.Copy() {
+		response, err := http.Get(addr + "/accounts/upload")
+		if err == nil {
+			var listAccountTrie []string
+			buffer, _ := ioutil.ReadAll(response.Body)
+			json.Unmarshal(buffer, &listAccountTrie)
+			for _, accountTrieStr := range listAccountTrie {
+				accountsByte, _ := hex.DecodeString(accountTrieStr)
+				mpt := mpt.DeserializeMPT(accountsByte)
+				fmt.Println(mpt.Root)
+				accounts[mpt.Root] = &mpt
+			}
+			break
+		} else {
+			panic(err)
 		}
 	}
 }
@@ -250,7 +344,7 @@ func askForBlock(height int32, hash string) {
 			Peers.Delete(addr)
 		} else {
 			blockBuffer, _ := ioutil.ReadAll(response.Body)
-			parentBlock, _ := blockchain.DecodeFromJSON(string(blockBuffer))
+			parentBlock, _ := bc.DecodeFromJSON(string(blockBuffer))
 			//Check if parent of parent block valid
 			if parentBlock.Header.Height > 1 && !SBC.CheckParentHash(parentBlock) { //If not root Block and dont has its parent hash
 				askForBlock(parentBlock.Header.Height-1, parentBlock.Header.ParentHash)
@@ -273,7 +367,7 @@ func startHeartBeat() {
 		time.Sleep(time.Duration(randomTime) * time.Minute)
 		Peers.Rebalance()
 		peersJSON, _ := Peers.PeerMapToJson()
-		heartBeat := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), blockchain.Block{}, peersJSON, SELF_ADDR)
+		heartBeat := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), bc.Block{}, peersJSON, SELF_ADDR)
 		heartBeatJSON, _ := heartBeat.EncodeToJSON()
 		sendHeartBeat(heartBeatJSON)
 	}
@@ -293,30 +387,25 @@ func sendHeartBeat(heartBeatJSON string) {
 //startTryingNonces tell miner to mine
 func startTryingNonces() {
 	//Solve puzzle
-	for true {
+	for len(memoryPool) > 0 {
+		rand.Seed(time.Now().UnixNano())
 		y := ""
 		//Get parents block
-		parentBlocks := SBC.GetLatestBlocks()
+		parentBlock := SBC.GetLatestBlocks()[0]
 		//Create MPT
-		mpt, txIDs := createMPT()
-
+		txMPT, txIDs := createMPTFromMemPool(parentBlock.Header.AccountsRoot)
 		//TODO: Add transaction fee for the miner
 
-		rand.Seed(time.Now().UnixNano())
-		mpt.Insert("hello", strconv.Itoa(rand.Intn(100)))
-		parentHash := ""
-		if len(parentBlocks) != 0 {
-			parentHash = parentBlocks[0].Header.Hash
-		}
+		parentHash := parentBlock.Header.Hash
 		//Generate nonce
 		random, _ := utils.RandomHex(16)
 		x := hex.EncodeToString(random)
-		y = proofOfWork(parentHash, x, mpt.Root())
+		y = proofOfWork(parentHash, x, txMPT.Root)
 		//Verify nonce
 		for y[:len(keyString)] != keyString && !heartBeatRevice {
 			random, _ = utils.RandomHex(16)
 			x = hex.EncodeToString(random)
-			y = proofOfWork(parentHash, x, mpt.Root())
+			y = proofOfWork(parentHash, x, txMPT.Root)
 		}
 		if heartBeatRevice {
 			heartBeatRevice = false
@@ -324,36 +413,51 @@ func startTryingNonces() {
 			continue
 		} else {
 			fmt.Print("Found Block: ")
-			fmt.Println(y)
 			Peers.Rebalance()
+			//Update balance in accounts Trie, delete the old root in accounts hashmap
+			newAccountTrie := bc.AddTransaction(*accounts[parentBlock.Header.AccountsRoot], txMPT)
+			accounts[newAccountTrie.Root] = &newAccountTrie
 			peersJSON, _ := Peers.PeerMapToJson()
-			newBlock := SBC.GenBlock(mpt, x, parentHash)
+			newBlock := SBC.GenBlock(txMPT, x, parentHash, newAccountTrie.Root)
 			heartBeat := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), newBlock, peersJSON, SELF_ADDR)
 			heartBeatJSON, _ := heartBeat.EncodeToJSON()
 			sendHeartBeat(heartBeatJSON)
 			deleteConfirmedTx(txIDs)
 		}
-		//If nonce found, create new block, send heart beat
-		//If flag, continue;
 	}
 }
 
-func createMPT() (mpt.MerklePatriciaTrie, []string) {
-	mpt := mpt.MerklePatriciaTrie{}
+func createMPTFromMemPool(prevBalanceRoot string) (mpt.MerklePatriciaTrie, []string) {
+	result := mpt.MerklePatriciaTrie{}
 	var transactionsID []string
-	mpt.Initial()
+	result.Initial()
 	//Get  transaction from memoryPool, check if it not confirmed yet
-	for id := range memoryPool {
+	//Check address to see if it is gameAddress or not
+	for id, signedTransaction := range memoryPool {
 		if confirmedTx[id] == true {
 			delete(memoryPool, id)
 			continue
 		}
-		transaction := memoryPool[id]
-		transactionsID = append(transactionsID, transaction.ID)
-		transactionJSON, _ := transaction.EncodeToJSON()
-		mpt.Insert(transaction.ID, transactionJSON)
+		if validateTx(signedTransaction, prevBalanceRoot) {
+			signedTxJSON, _ := signedTransaction.EncodeToJSON()
+			result.Insert(id, signedTxJSON)
+		}
+		transactionsID = append(transactionsID, id)
 	}
-	return mpt, transactionsID
+	return result, transactionsID
+}
+
+func validateReceiveTxsInBlock(txsTrie mpt.MerklePatriciaTrie, prevBalanceRoot string) (bool, []string) {
+	signedTxs := bc.GetSignedTxsFromMPT(txsTrie)
+	var txsID []string
+	fmt.Println(prevBalanceRoot)
+	for _, signedTx := range signedTxs {
+		if !validateTx(&signedTx, prevBalanceRoot) {
+			return false, nil
+		}
+		txsID = append(txsID, signedTx.Transaction.ID)
+	}
+	return true, txsID
 }
 
 func deleteConfirmedTx(ids []string) {
@@ -370,55 +474,78 @@ func proofOfWork(parentHash string, nonce string, rootHash string) string {
 	return y
 }
 
-func createGenesisBlock() {
-	currentTime := time.Now().Unix()
+func createGenesisBlock(accountRoot string) {
 	mpt := mpt.MerklePatriciaTrie{}
 	mpt.Initial()
-	SBC.Insert(blockchain.Initial(0, currentTime, "", mpt, ""))
+	SBC.Insert(bc.Genesis(accountRoot))
 }
 
-func validateBalance(publicKey string, amount float32) bool {
-	account, _ := accounts.Get(publicKey)
-	if account == "" {
+func validateBalance(publicKey string, amount int, prevBalanceRoot string) bool {
+	accountJSON, _ := accounts[prevBalanceRoot].Get(publicKey)
+	if accountJSON == "" {
 		return false
 	}
-	accountBalance, _ := strconv.ParseFloat(account, 32)
-	if float32(accountBalance) < amount {
+	account, _ := bc.DecodeAccountFromJSON(accountJSON)
+	if account.Balance <= amount {
 		return false
 	}
 	return true
 }
 
-func validateTx(tx blockchain.SignedTransaction) bool {
-	result, _ := wallet.ValidateTransaction(tx.Transaction, tx.Signature)
+func validateTx(signedTx *bc.SignedTransaction, prevBalanceRoot string) bool {
+	result, _ := wallet.ValidateTxSignature(signedTx.Transaction, signedTx.Signature)
 	if !result {
 		fmt.Println("Signature not correct")
 		return false
 	}
-	from := string(tx.Transaction.FromAddress)
-	to := string(tx.Transaction.FromAddress)
-	fromAccount, _ := accounts.Get(from)
-	if fromAccount == "" {
+	from := string(signedTx.Transaction.FromAddress)
+	to := string(signedTx.Transaction.FromAddress)
+	fromAccountJSON, _ := accounts[prevBalanceRoot].Get(from)
+	if fromAccountJSON == "" {
 		return false
 	}
-	fromBalance, _ := strconv.ParseFloat(fromAccount, 32)
-	if float32(fromBalance) < tx.Transaction.Value {
+	fromAccount, _ := bc.DecodeAccountFromJSON(fromAccountJSON)
+	if fromAccount.Balance <= signedTx.Transaction.Value {
 		return false
 	}
-	toAccount, _ := accounts.Get(to)
-	if toAccount == "" {
-		accounts.Insert(toAccount, "0.0")
+	toAccountJSON, _ := accounts[prevBalanceRoot].Get(to)
+	//If toAccount is empty, create account with balance = 0
+	if toAccountJSON == "" {
+		return false
 	}
 	return true
 }
 
-func SendNewAccount(accountJson string) {
-	peers := Peers.Copy()
-	for addr := range peers {
-		_, err := http.Post(addr+"/account/receive", "application/json", bytes.NewBuffer([]byte(accountJson)))
-		if err != nil {
-			fmt.Println("Peer not available")
-			Peers.Delete(addr)
-		}
+func GetAccountBalanceFork(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	publicKey := vars["publicKey"]
+	blocks := SBC.GetLatestBlocks()
+	for i, block := range blocks {
+		fmt.Fprintf(w, "%d balance: %d\n", i, GetAccountBalance(publicKey, block.Header.AccountsRoot))
 	}
+}
+
+func ShowBalance(w http.ResponseWriter, r *http.Request) {
+	blocks := SBC.GetLatestBlocks()
+	for _, block := range blocks {
+		fmt.Fprintf(w, "%s\n", accounts[block.Header.AccountsRoot].String())
+	}
+}
+
+func GetAccountBalance(publicKey string, accountsRoot string) int {
+	fmt.Println(publicKey)
+	accountsTrie := accounts[accountsRoot]
+	// for key, value := range accountsTrie.KeyVal {
+	// 	fmt.Println(key, " - ", value)
+	// }
+	accountJSON, _ := accountsTrie.Get(publicKey)
+	account, err := bc.DecodeAccountFromJSON(accountJSON)
+	if accountJSON == "" || err != nil {
+		return 0
+	}
+	return account.Balance
+}
+
+func GetGameInformation(gameId int) {
+
 }

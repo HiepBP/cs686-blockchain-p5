@@ -1,4 +1,4 @@
-package blockchain
+package bc
 
 import (
 	"bytes"
@@ -19,10 +19,11 @@ type Header struct {
 	Timestamp int64 `json:"timestamp"` //UNIX timestamp 1550013938
 	// hash_string = string(b.Header.Height) + string(b.Header.timestamp) + b.Header.ParentHash + b.Value.Root + string(b.Header.Size)
 	// SHA3-256 encoded value of this string (follow this specific order)
-	Hash       string
-	ParentHash string `json:"parentHash"`
-	Size       int32  `json:"size"`
-	Nonce      string `json:"nonce"`
+	Hash         string
+	ParentHash   string `json:"parentHash"`
+	Size         int32  `json:"size"`
+	Nonce        string `json:"nonce"`
+	AccountsRoot string `json:"accountsRoot"`
 }
 
 //Block contains header and value
@@ -38,15 +39,17 @@ type BlockCustom struct {
 	Height    int32  `json:"height"`
 	// hash_string = string(b.Header.Height) + string(b.Header.timestamp) + b.Header.ParentHash + b.Value.Root + string(b.Header.Size)
 	// SHA3-256 encoded value of this string (follow this specific order)
-	ParentHash string            `json:"parentHash"`
-	Size       int32             `json:"size"`
-	Value      map[string]string `json:"mpt"`
-	Nonce      string            `json:"nonce"`
+	ParentHash   string            `json:"parentHash"`
+	Size         int32             `json:"size"`
+	Value        map[string]string `json:"mpt"`
+	Nonce        string            `json:"nonce"`
+	AccountsRoot string            `json:"accountsRoot"`
 }
 
 //Initial function takes arguments(such as height, parentHash, and value of MPT type)
 //Then forms a block
-func Initial(height int32, timestamp int64, parentHash string, mpt p1.MerklePatriciaTrie, nonce string) Block {
+func Initial(height int32, timestamp int64, parentHash string,
+	mpt p1.MerklePatriciaTrie, nonce string, accountsRoot string) Block {
 	var result Block
 	var size int32
 
@@ -55,7 +58,7 @@ func Initial(height int32, timestamp int64, parentHash string, mpt p1.MerklePatr
 	stringMix := fmt.Sprintf("%v", height) +
 		fmt.Sprintf("%v", timestamp) +
 		parentHash +
-		mpt.Root() +
+		mpt.Root +
 		fmt.Sprintf("%v", size)
 	hash := sha3.Sum256([]byte(stringMix))
 
@@ -67,12 +70,13 @@ func Initial(height int32, timestamp int64, parentHash string, mpt p1.MerklePatr
 	result.Header.Size = size
 	result.Header.Timestamp = timestamp
 	result.Header.Nonce = nonce
+	result.Header.AccountsRoot = accountsRoot
 	return result
 }
 
-func Genesis() Block {
+func Genesis(accountsRoot string) Block {
 	currentTime := time.Now().Unix()
-	return Initial(0, currentTime, "", p1.MerklePatriciaTrie{}, "")
+	return Initial(0, currentTime, "", p1.MerklePatriciaTrie{}, "", accountsRoot)
 }
 
 //DecodeFromJSON function takes a string represents the json value of a block,
@@ -120,6 +124,7 @@ func (block *BlockCustom) toBlock() Block {
 	result.Header.Size = block.Size
 	result.Header.Timestamp = block.Timestamp
 	result.Header.Nonce = block.Nonce
+	result.Header.AccountsRoot = block.AccountsRoot
 	return result
 }
 
@@ -135,7 +140,7 @@ func (block *Block) toBlockCustom() BlockCustom {
 	result.Size = block.Header.Size
 	result.Timestamp = block.Header.Timestamp
 	result.Nonce = block.Header.Nonce
-
+	result.AccountsRoot = block.Header.AccountsRoot
 	return result
 }
 

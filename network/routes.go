@@ -51,7 +51,7 @@ var routes = Routes{
 	Route{
 		"StartMiner",
 		"GET",
-		"/miner/start",
+		"/miner/start/{publicKey}",
 		StartMiner,
 	},
 	Route{
@@ -67,9 +67,21 @@ var routes = Routes{
 		HandleTx,
 	},
 	Route{
-		"NewAccountReceive",
-		"POST",
-		"/accounts/receive",
-		NewAccountReceive,
+		"UploadAccounts",
+		"GET",
+		"/accounts/upload",
+		UploadAccounts,
+	},
+	Route{
+		"GetAccountBalaceFork",
+		"GET",
+		"/accounts/{publicKey}",
+		GetAccountBalanceFork,
+	},
+	Route{
+		"ShowBalance",
+		"GET",
+		"/accounts",
+		ShowBalance,
 	},
 }

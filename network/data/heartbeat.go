@@ -28,7 +28,7 @@ func NewHeartBeatData(ifNewBlock bool, id int32, blockJSON string, peerMapJSON s
 }
 
 //PrepareHeartBeatData will create heart beat base on sbc is empty or not
-func PrepareHeartBeatData(sbc *SyncBlockChain, selfID int32, block blockchain.Block, peerMapJSON string, addr string) HeartBeatData {
+func PrepareHeartBeatData(sbc *SyncBlockChain, selfID int32, block bc.Block, peerMapJSON string, addr string) HeartBeatData {
 	if block.Header.Hash != "" {
 		sbc.Insert(block)
 		blockJSON, _ := block.EncodeToJSON()

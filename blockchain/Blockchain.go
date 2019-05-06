@@ -1,4 +1,4 @@
-package blockchain
+package bc
 
 import (
 	"encoding/hex"
@@ -145,7 +145,7 @@ func (blockChain *BlockChain) GetParentBlock(block Block) (Block, bool) {
 	blocks := blockChain.Get(block.Header.Height - 1)
 	for _, ancestorBlock := range blocks {
 		if ancestorBlock.Header.Hash == block.Header.ParentHash {
-			return block, true
+			return ancestorBlock, true
 		}
 	}
 	return Block{}, false

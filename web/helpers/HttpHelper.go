@@ -7,9 +7,8 @@ var cookieHandler = securecookie.New(
 	securecookie.GenerateRandomKey(64),
 	securecookie.GenerateRandomKey(32))
 
-func SetCookie(username string, publicKey string, response http.ResponseWriter) {
+func SetCookie(publicKey string, response http.ResponseWriter) {
 	value := map[string]string{
-		"username":  username,
 		"publicKey": publicKey,
 	}
 	if encoded, err := cookieHandler.Encode("cookie", value); err == nil {
@@ -32,13 +31,12 @@ func ClearCookie(response http.ResponseWriter) {
 	http.SetCookie(response, cookie)
 }
 
-func CheckLogin(request *http.Request) (username string, publicKey string) {
+func CheckLogin(request *http.Request) (publicKey string) {
 	if cookie, err := request.Cookie("cookie"); err == nil {
 		cookieValue := make(map[string]string)
 		if err = cookieHandler.Decode("cookie", cookie.Value, &cookieValue); err == nil {
-			username = cookieValue["username"]
 			publicKey = cookieValue["publicKey"]
 		}
 	}
-	return username, publicKey
+	return publicKey
 }

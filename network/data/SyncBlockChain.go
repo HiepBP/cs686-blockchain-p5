@@ -10,30 +10,30 @@ import (
 
 //SyncBlockChain contain the BlockChain and sync support
 type SyncBlockChain struct {
-	bc  blockchain.BlockChain
+	bc  bc.BlockChain
 	mux sync.Mutex
 }
 
 func NewBlockChain() SyncBlockChain {
-	return SyncBlockChain{bc: blockchain.NewBlockChain()}
+	return SyncBlockChain{bc: bc.NewBlockChain()}
 }
 
 //GetLatestBlocks returns the list of blocks of height "BlockChain.length".
-func (sbc *SyncBlockChain) GetLatestBlocks() []blockchain.Block {
+func (sbc *SyncBlockChain) GetLatestBlocks() []bc.Block {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	return sbc.bc.GetLatestBlocks()
 }
 
 //GetParentBlock takes a block as the parameter, and returns its parent block
-func (sbc *SyncBlockChain) GetParentBlock(block blockchain.Block) (blockchain.Block, bool) {
+func (sbc *SyncBlockChain) GetParentBlock(block bc.Block) (bc.Block, bool) {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	return sbc.bc.GetParentBlock(block)
 }
 
 //Get will return a blocks at specific height
-func (sbc *SyncBlockChain) Get(height int32) ([]blockchain.Block, bool) {
+func (sbc *SyncBlockChain) Get(height int32) ([]bc.Block, bool) {
 	sbc.mux.Lock()
 	defer sbc.mux.Unlock()
 	//return sbc.bc.Get(height)
@@ -44,7 +44,7 @@ func (sbc *SyncBlockChain) Get(height int32) ([]blockchain.Block, bool) {
 	return blocks, false
 }
 
-func (sbc *SyncBlockChain) GetBlock(height int32, hash string) (blockchain.Block, bool) {
+func (sbc *SyncBlockChain) GetBlock(height int32, hash string) (bc.Block, bool) {
 	blocks, available := sbc.Get(height)
 	if available {
 		for _, block := range blocks {
@@ -53,17 +53,17 @@ func (sbc *SyncBlockChain) GetBlock(height int32, hash string) (blockchain.Block
 			}
 		}
 	}
-	return blockchain.Block{}, false
+	return bc.Block{}, false
 }
 
-func (sbc *SyncBlockChain) Insert(block blockchain.Block) {
+func (sbc *SyncBlockChain) Insert(block bc.Block) {
 	sbc.mux.Lock()
 	sbc.bc.Insert(block)
 	sbc.mux.Unlock()
 }
 
 //CheckParentHash will check if parent block available base on insertBlock Header
-func (sbc *SyncBlockChain) CheckParentHash(insertBlock blockchain.Block) bool {
+func (sbc *SyncBlockChain) CheckParentHash(insertBlock bc.Block) bool {
 	_, available := sbc.GetBlock(insertBlock.Header.Height-1, insertBlock.Header.ParentHash)
 	return available
 }
@@ -71,7 +71,7 @@ func (sbc *SyncBlockChain) CheckParentHash(insertBlock blockchain.Block) bool {
 //UpdateEntireBlockChain will add the downloaded bc into current one
 func (sbc *SyncBlockChain) UpdateEntireBlockChain(blockChainJSON string) {
 	sbc.mux.Lock()
-	sbc.bc, _ = blockchain.DecodeJSONToBlockChain(blockChainJSON)
+	sbc.bc, _ = bc.DecodeJSONToBlockChain(blockChainJSON)
 	sbc.mux.Unlock()
 }
 
@@ -82,17 +82,18 @@ func (sbc *SyncBlockChain) BlockChainToJson() (string, error) {
 	return sbc.bc.EncodeToJSON()
 }
 
-//GenBlock will create new blockchain from MPT
-func (sbc *SyncBlockChain) GenBlock(mpt mpt.MerklePatriciaTrie, nonce string, parentHash string) blockchain.Block {
+//GenBlock will create new block from MPT
+func (sbc *SyncBlockChain) GenBlock(mpt mpt.MerklePatriciaTrie, nonce string,
+	parentHash string, accountsRoot string) bc.Block {
 	height := sbc.bc.Length
 
-	var result blockchain.Block
+	var result bc.Block
 	// currentTime, _ := strconv.ParseInt(time.Now().Format(time.RFC850), 10, 64)
 	currentTime := time.Now().Unix()
 	if parentHash != "" {
-		result = blockchain.Initial(height+1, currentTime, parentHash, mpt, nonce)
+		result = bc.Initial(height+1, currentTime, parentHash, mpt, nonce, accountsRoot)
 	} else {
-		result = blockchain.Initial(height+1, currentTime, "", mpt, nonce)
+		result = bc.Initial(height+1, currentTime, "", mpt, nonce, accountsRoot)
 	}
 	return result
 }

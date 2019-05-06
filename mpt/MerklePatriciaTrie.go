@@ -1,8 +1,11 @@
 package mpt
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 
@@ -10,14 +13,14 @@ import (
 )
 
 type Flag_value struct {
-	encoded_prefix []uint8
-	value          string
+	Encoded_prefix []uint8
+	Value          string
 }
 
 type Node struct {
-	node_type    int // 0: Null, 1: Branch, 2: Ext or Leaf
-	branch_value [17]string
-	flag_value   Flag_value
+	Node_type    int // 0: Null, 1: Branch, 2: Ext or Leaf
+	Branch_value [17]string
+	Flag_value   Flag_value
 }
 
 func (node Node) is_empty() bool {
@@ -25,14 +28,9 @@ func (node Node) is_empty() bool {
 }
 
 type MerklePatriciaTrie struct {
-	db     map[string]Node
-	keyVal map[string]string
-	root   string
-}
-
-//Root will return the root of MPT
-func (mpt *MerklePatriciaTrie) Root() string {
-	return mpt.root
+	Db     map[string]Node
+	KeyVal map[string]string
+	Root   string
 }
 
 func NewMPT() *MerklePatriciaTrie {
@@ -43,9 +41,9 @@ func NewMPT() *MerklePatriciaTrie {
 }
 
 func (mpt *MerklePatriciaTrie) Initial() {
-	mpt.db = make(map[string]Node)
-	mpt.keyVal = make(map[string]string)
-	mpt.root = ""
+	mpt.Db = make(map[string]Node)
+	mpt.KeyVal = make(map[string]string)
+	mpt.Root = ""
 }
 
 func compact_encode(hex_array []uint8) []uint8 {
@@ -97,16 +95,16 @@ func test_compact_encode() {
 
 func (node *Node) hash_node() string {
 	var str string
-	switch node.node_type {
+	switch node.Node_type {
 	case 0:
 		str = ""
 	case 1:
 		str = "branch_"
-		for _, v := range node.branch_value {
+		for _, v := range node.Branch_value {
 			str += v
 		}
 	case 2:
-		str = node.flag_value.value
+		str = node.Flag_value.Value + string(node.Flag_value.Encoded_prefix)
 	}
 
 	sum := sha3.Sum256([]byte(str))
@@ -114,30 +112,30 @@ func (node *Node) hash_node() string {
 }
 
 func (mpt *MerklePatriciaTrie) Get_db_length() int {
-	return len(mpt.db)
+	return len(mpt.Db)
 }
 
 //Support function
 
 func (node *Node) String() string {
 	str := "empty string"
-	switch node.node_type {
+	switch node.Node_type {
 	case 0:
 		str = "[Null Node]"
 	case 1:
 		str = "Branch["
-		for i, v := range node.branch_value[:16] {
+		for i, v := range node.Branch_value[:16] {
 			str += fmt.Sprintf("%d=\"%s\", ", i, v)
 		}
-		str += fmt.Sprintf("value=%s]", node.branch_value[16])
+		str += fmt.Sprintf("value=%s]", node.Branch_value[16])
 	case 2:
-		encoded_prefix := node.flag_value.encoded_prefix
+		encoded_prefix := node.Flag_value.Encoded_prefix
 		node_name := "Leaf"
 		if is_ext_node(encoded_prefix) {
 			node_name = "Ext"
 		}
 		ori_prefix := strings.Replace(fmt.Sprint(compact_decode(encoded_prefix)), " ", ", ", -1)
-		str = fmt.Sprintf("%s<%v, value=\"%s\">", node_name, ori_prefix, node.flag_value.value)
+		str = fmt.Sprintf("%s<%v, value=\"%s\">", node_name, ori_prefix, node.Flag_value.Value)
 	}
 	return str
 }
@@ -151,9 +149,9 @@ func node_to_string(node Node) string {
 }
 
 func (mpt *MerklePatriciaTrie) String() string {
-	content := fmt.Sprintf("ROOT=%s\n", mpt.root)
-	for hash := range mpt.db {
-		content += fmt.Sprintf("%s: %s\n", hash, node_to_string(mpt.db[hash]))
+	content := fmt.Sprintf("ROOT=%s\n", mpt.Root)
+	for hash := range mpt.Db {
+		content += fmt.Sprintf("%s: %s\n", hash, node_to_string(mpt.Db[hash]))
 	}
 	return content
 }
@@ -203,27 +201,27 @@ func (mpt *MerklePatriciaTrie) update_node_hash_value(key []uint8, stack *Stack)
 	// for item := stack.top; item != nil; item = item.next {
 	for i := 0; i < len(items); i++ {
 		cur_node = items[i]
-		delete(mpt.db, cur_node.hash_node())
-		switch cur_node.node_type {
+		delete(mpt.Db, cur_node.hash_node())
+		switch cur_node.Node_type {
 		case 1: //Branch
 			if !pre_node.is_empty() {
-				cur_node.branch_value[key[pos]] = pre_node.hash_node()
+				cur_node.Branch_value[key[pos]] = pre_node.hash_node()
 				pos--
 			}
 		case 2: //Ext/leaf
-			pos -= len(compact_decode(cur_node.flag_value.encoded_prefix))
+			pos -= len(compact_decode(cur_node.Flag_value.Encoded_prefix))
 			if cur_node.is_leaf() {
 
 			} else {
 				if !pre_node.is_empty() {
-					cur_node.flag_value.value = pre_node.hash_node()
+					cur_node.Flag_value.Value = pre_node.hash_node()
 				}
 			}
 		}
-		mpt.db[cur_node.hash_node()] = cur_node
+		mpt.Db[cur_node.hash_node()] = cur_node
 		pre_node = cur_node
 	}
-	mpt.root = cur_node.hash_node()
+	mpt.Root = cur_node.hash_node()
 	return
 }
 
@@ -236,5 +234,33 @@ func InitMPT(keyValue map[string]string) *MerklePatriciaTrie {
 }
 
 func (mpt *MerklePatriciaTrie) GetListKeyValue() map[string]string {
-	return mpt.keyVal
+	return mpt.KeyVal
+}
+
+//Serialize will convert block to bytes
+func (mpt *MerklePatriciaTrie) Serialize() []byte {
+	var res bytes.Buffer
+	encoder := gob.NewEncoder(&res)
+
+	err := encoder.Encode(mpt)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return res.Bytes()
+}
+
+func DeserializeMPT(data []byte) MerklePatriciaTrie {
+	var mpt MerklePatriciaTrie
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+
+	err := decoder.Decode(&mpt)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return mpt
 }

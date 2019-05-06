@@ -1,18 +1,34 @@
 package wallet
 
 import (
+	"bytes"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/hex"
 	"log"
 
-	"../blockchain"
+	bc "../blockchain"
+	"golang.org/x/crypto/ripemd160"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/mr-tron/base58"
 )
 
-type Wallet struct {
-	PrivateKey ecdsa.PrivateKey
-	PublicKey  []byte
+const (
+	checksumLength = 4
+	version        = byte(0x00)
+)
+
+func Address(pubKey []byte) []byte {
+	pubHash := PublicKeyHash(pubKey)
+
+	versionedHash := append([]byte{version}, pubHash...)
+	checksum := Checksum(versionedHash)
+
+	fullHash := append(versionedHash, checksum...)
+	address := Base58Encode(fullHash)
+
+	return address
 }
 
 //SignData will create a signed data base on private key
@@ -47,7 +63,7 @@ func ValidateSignature(data string, signature []byte, publicKey string) (bool, e
 }
 
 //ValidateSignature will check if message was not changed
-func ValidateTransaction(transaction blockchain.Transaction, signature []byte) (bool, error) {
+func ValidateTxSignature(transaction bc.Transaction, signature []byte) (bool, error) {
 	transactionJSON, err := transaction.EncodeToJSON()
 	if err != nil {
 		return false, err
@@ -59,7 +75,6 @@ func ValidateTransaction(transaction blockchain.Transaction, signature []byte) (
 	if err != nil {
 		return false, err
 	}
-
 	matches := hex.EncodeToString(sigPublicKey) == transaction.FromAddress
 
 	return matches, nil
@@ -86,4 +101,50 @@ func GetPublicKey(privateKey *ecdsa.PrivateKey) []byte {
 	}
 	publicKeyBytes := crypto.FromECDSAPub(publicKeyECDSA)
 	return publicKeyBytes
+}
+
+func PublicKeyHash(pubKey []byte) []byte {
+	pubHash := sha256.Sum256(pubKey)
+
+	hasher := ripemd160.New()
+	_, err := hasher.Write(pubHash[:])
+	if err != nil {
+		log.Panic(err)
+	}
+
+	publicRipMD := hasher.Sum(nil)
+
+	return publicRipMD
+}
+
+func Checksum(payload []byte) []byte {
+	firstHash := sha256.Sum256(payload)
+	secondHash := sha256.Sum256(firstHash[:])
+
+	return secondHash[:checksumLength]
+}
+
+func ValidateAddress(address string) bool {
+	pubKeyHash := Base58Decode([]byte(address))
+	actualChecksum := pubKeyHash[len(pubKeyHash)-checksumLength:]
+	version := pubKeyHash[0]
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-checksumLength]
+	targetChecksum := Checksum(append([]byte{version}, pubKeyHash...))
+
+	return bytes.Compare(actualChecksum, targetChecksum) == 0
+}
+
+func Base58Encode(input []byte) []byte {
+	encode := base58.Encode(input)
+
+	return []byte(encode)
+}
+
+func Base58Decode(input []byte) []byte {
+	decode, err := base58.Decode(string(input[:]))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return decode
 }

@@ -6,8 +6,8 @@ import (
 
 //Check if the Node if Leaf/Extension base on encodedPrefix
 func (node *Node) is_leaf() bool {
-	if node.flag_value.encoded_prefix[0]/16 == 0 ||
-		node.flag_value.encoded_prefix[0]/16 == 1 {
+	if node.Flag_value.Encoded_prefix[0]/16 == 0 ||
+		node.Flag_value.Encoded_prefix[0]/16 == 1 {
 		return false
 	}
 	return true
@@ -29,11 +29,11 @@ func get_path_length(key []uint8, s *Stack) int {
 	nodePath := s.retrieve()
 	for i := len(nodePath) - 1; i >= 0; i-- {
 		node := nodePath[i]
-		if node.node_type == 1 {
+		if node.Node_type == 1 {
 			length++
 		} else if !node.is_leaf() { //If it is EXT, increase the length equal with the decoded_prefix
-			length += len(compact_decode(node.flag_value.encoded_prefix))
-			// length += len(get_common_prefix(key[length:], compact_decode(node.flag_value.encoded_prefix)))
+			length += len(compact_decode(node.Flag_value.Encoded_prefix))
+			// length += len(get_common_prefix(key[length:], compact_decode(node.Flag_value.Encoded_prefix)))
 		}
 	}
 	return length
@@ -47,12 +47,12 @@ func create_new_node(key []uint8, value string, isLeaf bool) Node {
 		key = append(key, 16) //append 16 to leaf
 	}
 	flagValue := Flag_value{
-		encoded_prefix: compact_encode(key),
-		value:          value,
+		Encoded_prefix: compact_encode(key),
+		Value:          value,
 	}
 	return Node{
-		node_type:  2,
-		flag_value: flagValue,
+		Node_type:  2,
+		Flag_value: flagValue,
 	}
 }
 
@@ -77,7 +77,7 @@ func (mpt *MerklePatriciaTrie) get_path(key string) (*Stack, error) {
 	stack := new(Stack)
 
 	// get the tree stored user data key to the value
-	err := mpt.get_path_recursive(mpt.db[mpt.root], keyHexArr, 0, stack)
+	err := mpt.get_path_recursive(mpt.Db[mpt.Root], keyHexArr, 0, stack)
 
 	return stack, err
 }
@@ -91,7 +91,7 @@ func (mpt *MerklePatriciaTrie) get_path_recursive(root Node, key []uint8, pos in
 		return errors.New("problem: empty node")
 	}
 	stack.push(&root)
-	switch root.node_type {
+	switch root.Node_type {
 	case 0: //NULL
 		return errors.New("problem: NULL node")
 	case 1: //Branch
@@ -99,9 +99,9 @@ func (mpt *MerklePatriciaTrie) get_path_recursive(root Node, key []uint8, pos in
 			//Get the value in branch node
 			return nil
 		}
-		child_node_pointer := root.branch_value[key[pos]]
+		child_node_pointer := root.Branch_value[key[pos]]
 		if len(child_node_pointer) > 0 {
-			child_node := mpt.db[child_node_pointer]
+			child_node := mpt.Db[child_node_pointer]
 			if child_node.is_empty() {
 				return errors.New("problem: can not find child")
 			}
@@ -109,13 +109,13 @@ func (mpt *MerklePatriciaTrie) get_path_recursive(root Node, key []uint8, pos in
 		}
 		return errors.New("problem: branch problem")
 	case 2: //Ext or Leaf
-		path := compact_decode(root.flag_value.encoded_prefix)
+		path := compact_decode(root.Flag_value.Encoded_prefix)
 		if !root.is_leaf() { //Ext
 			if len(path) > len(key)-pos || !path_compare(path, key[pos:pos+len(path)]) {
 				return errors.New("problem: path not valid with this ext")
 			}
-			child_node_pointer := root.flag_value.value
-			child_node := mpt.db[child_node_pointer]
+			child_node_pointer := root.Flag_value.Value
+			child_node := mpt.Db[child_node_pointer]
 			if child_node.is_empty() {
 				return errors.New("problem: can not find child")
 			}

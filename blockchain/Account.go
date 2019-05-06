@@ -1,17 +1,10 @@
-package models
+package bc
 
 import "encoding/json"
 
-//Account use to keep username and password
 type Account struct {
-	Username  string
-	Password  string
-	PublicKey []byte
-}
-
-//CheckAccount will validate username and password
-func (account *Account) CheckAccount(username string, password string) bool {
-	return username == account.Username && password == account.Password
+	Balance int    `json:"balance"`
+	Data    string `json:"data"`
 }
 
 func DecodeAccountFromJSON(jsonString string) (Account, error) {
