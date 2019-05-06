@@ -39,10 +39,11 @@ How transaction be signed and send through network.<br/>
 [x] Sign Tx function  
 [x] Validate Tx is signed by a correct one  
 [x] Send account(public key) to other peers when create.  
+[x] See balance base on public key  
 [] Classify Tx (Transfer coin Tx or Logic Tx)  
-[] Miner validate transaction is signed correctly  
-[] Miner balance for each transaction  
-[] Miner handle logic code to creat game  
+[x] Miner validate transaction is signed correctly  
+[x] Miner validate balance for each transaction  
+[] Miner handle logic code to create game  
 [] Miner handle logic code to join game  
 [] Miner handle logic code to reveal choice and close game  
 [] User can see the game information  
