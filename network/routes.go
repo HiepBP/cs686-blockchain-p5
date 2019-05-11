@@ -84,4 +84,10 @@ var routes = Routes{
 		"/accounts",
 		ShowBalance,
 	},
+	Route{
+		"GetGameInformation",
+		"GET",
+		"/games",
+		GetGameInformation,
+	},
 }

@@ -1,14 +1,18 @@
-package bc
+package data
 
 import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/gob"
 	"encoding/json"
+	"fmt"
 	"log"
 
-	"../mpt"
+	bc "../../blockchain"
+	"../../mpt"
 )
+
+var ContractAddress = "636f6e7472616374"
 
 //Transaction will be handle and validate by Miner
 type Transaction struct {
@@ -123,16 +127,39 @@ func AddTransaction(accountTrie mpt.MerklePatriciaTrie,
 	signedTxs := GetSignedTxsFromMPT(signedTxsTrie)
 	for _, signedTx := range signedTxs {
 		tx := signedTx.Transaction
-		FromAccountJSON, _ := accountTrie.Get(tx.FromAddress)
-		ToAccountJSON, _ := accountTrie.Get(tx.ToAddress)
-		FromAccount, _ := DecodeAccountFromJSON(FromAccountJSON)
-		ToAccount, _ := DecodeAccountFromJSON(ToAccountJSON)
-		FromAccount.Balance = FromAccount.Balance - tx.Value
-		ToAccount.Balance = ToAccount.Balance + tx.Value
-		FromAccountJSON, _ = FromAccount.EncodeToJSON()
-		ToAccountJSON, _ = ToAccount.EncodeToJSON()
-		accountTrie.Insert(tx.FromAddress, FromAccountJSON)
-		accountTrie.Insert(tx.ToAddress, ToAccountJSON)
+		fmt.Println(string([]rune(tx.ToAddress)[:len(ContractAddress)]))
+		if string([]rune(tx.ToAddress)[:len(ContractAddress)]) == ContractAddress {
+			fmt.Println("Handle game contract")
+			gameAccountJSON, _ := accountTrie.Get(ContractAddress)
+			gameAccount, _ := bc.DecodeAccountFromJSON(gameAccountJSON)
+			gameList, _ := DecodeGameListFromJSON(gameAccount.Data)
+			gameList, ok := HandleGameContract(tx, gameList)
+			if ok {
+				gameListJSON, _ := EncodeGameListToJSON(gameList)
+				gameAccount.Data = gameListJSON
+				gameAccountJSON, _ := gameAccount.EncodeToJSON()
+				//Change function address to contract address to update balance
+				tx.ToAddress = ContractAddress
+				accountTrie.Insert(tx.ToAddress, gameAccountJSON)
+				Rebalance(&accountTrie, tx)
+			}
+		} else { //Transfer money contract
+			Rebalance(&accountTrie, tx)
+		}
+
 	}
 	return accountTrie
+}
+
+func Rebalance(accountTrie *mpt.MerklePatriciaTrie, tx Transaction) {
+	FromAccountJSON, _ := accountTrie.Get(tx.FromAddress)
+	ToAccountJSON, _ := accountTrie.Get(tx.ToAddress)
+	FromAccount, _ := bc.DecodeAccountFromJSON(FromAccountJSON)
+	ToAccount, _ := bc.DecodeAccountFromJSON(ToAccountJSON)
+	FromAccount.Balance = FromAccount.Balance - tx.Value
+	ToAccount.Balance = ToAccount.Balance + tx.Value
+	FromAccountJSON, _ = FromAccount.EncodeToJSON()
+	ToAccountJSON, _ = ToAccount.EncodeToJSON()
+	accountTrie.Insert(tx.FromAddress, FromAccountJSON)
+	accountTrie.Insert(tx.ToAddress, ToAccountJSON)
 }

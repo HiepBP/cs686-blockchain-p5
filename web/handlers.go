@@ -8,12 +8,18 @@ import (
 	"net/http"
 	"strconv"
 
-	bc "../blockchain"
 	"../network"
+	"../network/data"
 	"../wallet"
 	"./helpers"
 	"./models"
 	"golang.org/x/crypto/sha3"
+)
+
+var (
+	CreateGameAddress   = "636f6e7472616374637265617465"
+	JoinGameAddress     = "636f6e74726163746a6f696e"
+	RevealChoiceAddress = "636f6e747261637472657665616c"
 )
 
 func StartBlockChain(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +104,9 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 		// 	Data:      gameJSON,
 		// }
 		// dataJSON, _ := data.EncodeToJSON()
-		transaction := bc.Transaction{
+		transaction := data.Transaction{
 			FromAddress: publicKey,
-			ToAddress:   network.ContractAddress,
+			ToAddress:   CreateGameAddress,
 			Value:       game.GameValue,
 			Data:        gameJSON,
 		}
@@ -113,7 +119,7 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fmt.Println(txJSON)
-		signedTx := bc.SignedTransaction{
+		signedTx := data.SignedTransaction{
 			Transaction: transaction,
 			Signature:   signature,
 		}
@@ -126,7 +132,7 @@ func Show(w http.ResponseWriter, r *http.Request) {
 	network.Show(w, r)
 }
 
-func sendTx(signedTx bc.SignedTransaction) {
+func sendTx(signedTx data.SignedTransaction) {
 	signedTxJSON, _ := signedTx.EncodeToJSON()
 	peers := network.Peers.Copy()
 	for addr := range peers {

@@ -7,11 +7,11 @@ import (
 	"encoding/hex"
 	"log"
 
-	bc "../blockchain"
-	"golang.org/x/crypto/ripemd160"
+	"../network/data"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/mr-tron/base58"
+	"golang.org/x/crypto/ripemd160"
 )
 
 const (
@@ -63,7 +63,7 @@ func ValidateSignature(data string, signature []byte, publicKey string) (bool, e
 }
 
 //ValidateSignature will check if message was not changed
-func ValidateTxSignature(transaction bc.Transaction, signature []byte) (bool, error) {
+func ValidateTxSignature(transaction data.Transaction, signature []byte) (bool, error) {
 	transactionJSON, err := transaction.EncodeToJSON()
 	if err != nil {
 		return false, err

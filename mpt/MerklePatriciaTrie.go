@@ -33,6 +33,20 @@ type MerklePatriciaTrie struct {
 	Root   string
 }
 
+//Copy will make a copy of PeerMap
+func (mpt *MerklePatriciaTrie) Copy() MerklePatriciaTrie {
+	var newMpt = MerklePatriciaTrie{}
+	newMpt.Initial()
+	for key, value := range mpt.Db {
+		newMpt.Db[key] = value
+	}
+	for key, value := range mpt.KeyVal {
+		newMpt.KeyVal[key] = value
+	}
+	newMpt.Root = mpt.Root
+	return newMpt
+}
+
 func NewMPT() *MerklePatriciaTrie {
 	db := make(map[string]Node)
 	keyVal := make(map[string]string)

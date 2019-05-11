@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"../../blockchain"
+	bc "../../blockchain"
 	"../../mpt"
 )
 
