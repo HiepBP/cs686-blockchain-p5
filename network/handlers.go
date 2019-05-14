@@ -197,7 +197,14 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 		valid, txsID := validateReceiveTxsInBlock(block.Value, parentBlock.Header.AccountsRoot)
 		if valid {
 			SBC.Insert(block)
-			newAccountTrie := data.AddTransaction(accounts[parentBlock.Header.AccountsRoot].Copy(), block.Value)
+			newAccountTrie := data.AddTransaction(accounts[parentBlock.Header.AccountsRoot].Copy(), 
+				block.Value)
+			//Add miner reward
+			minerAccountJSON, _ := newAccountTrie.Get(block.Header.MinedBy)
+			minerAccount, _ := bc.DecodeAccountFromJSON(minerAccountJSON)
+			minerAccount.Balance = minerAccount.Balance + block.Header.BlockReward
+			minerAccountJSON, _ = minerAccount.EncodeToJSON()
+			newAccountTrie.Insert(block.Header.MinedBy, minerAccountJSON)
 			if newAccountTrie.Root != block.Header.AccountsRoot {
 				fmt.Println("WEIRD")
 			} else {
@@ -242,7 +249,9 @@ func HandleTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//Received tx is already confirmed
+	fmt.Println("Received: ", signedTransaction.Transaction.ID)
 	if confirmedTx[signedTransaction.Transaction.ID] == true {
+		fmt.Println("Tx confirmed")
 		return
 	}
 	memoryPool[signedTransaction.Transaction.ID] = &signedTransaction
@@ -250,19 +259,6 @@ func HandleTx(w http.ResponseWriter, r *http.Request) {
 	// if len(memoryPool) >= 2 && len(mineAddress) > 0 {
 	// 	startTryingNonces()
 	// }
-}
-
-func HandleGameCreate(w http.ResponseWriter, r *http.Request) {
-	buffer, _ := ioutil.ReadAll(r.Body)
-	signedTransaction, _ := data.DecodeSignedTransactionFromJSON(string(buffer))
-	//Received tx is already confirmed
-	if confirmedTx[signedTransaction.Transaction.ID] == true {
-		return
-	}
-	memoryPool[signedTransaction.Transaction.ID] = &signedTransaction
-	if len(memoryPool) >= 2 && len(mineAddress) > 0 {
-		startTryingNonces()
-	}
 }
 
 func initPeer(portNumber int32) {
@@ -316,7 +312,6 @@ func DownloadAccounts() {
 			for _, accountTrieStr := range listAccountTrie {
 				accountsByte, _ := hex.DecodeString(accountTrieStr)
 				mpt := mpt.DeserializeMPT(accountsByte)
-				fmt.Println(mpt.Root)
 				accounts[mpt.Root] = &mpt
 			}
 			break
@@ -369,11 +364,14 @@ func startHeartBeat() {
 func sendHeartBeat(heartBeatJSON string) {
 	peers := Peers.Copy()
 	for addr := range peers {
-		_, err := http.Post(addr+"/heartbeat/receive", "application/json", bytes.NewBuffer([]byte(heartBeatJSON)))
-		if err != nil {
-			fmt.Println("Peer not available")
-			Peers.Delete(addr)
-		}
+		currAddr := addr
+		go func() {
+			_, err := http.Post(currAddr+"/heartbeat/receive", "application/json", bytes.NewBuffer([]byte(heartBeatJSON)))
+			if err != nil {
+				fmt.Println("Peer not available")
+				Peers.Delete(currAddr)
+			}
+		}()
 	}
 }
 
@@ -408,13 +406,10 @@ func startTryingNonces() {
 			fmt.Print("Found Block: ")
 			Peers.Rebalance()
 			//Update balance in accounts Trie, delete the old root in accounts hashmap
-			fmt.Println(accounts[parentBlock.Header.AccountsRoot].Get("0461ca35768e3960c76e881c2b2f543ae6c298f78fba9473f5b0da57f735dbb317f993575602ff7b6969fa423fb12b8fad88a9c1575aa5bc479d47ce0287ec7b2f"))
 			newAccountTrie := data.AddTransaction(accounts[parentBlock.Header.AccountsRoot].Copy(), txMPT)
-			fmt.Println(accounts[parentBlock.Header.AccountsRoot].Get("0461ca35768e3960c76e881c2b2f543ae6c298f78fba9473f5b0da57f735dbb317f993575602ff7b6969fa423fb12b8fad88a9c1575aa5bc479d47ce0287ec7b2f"))
-			fmt.Println(newAccountTrie.Get("0461ca35768e3960c76e881c2b2f543ae6c298f78fba9473f5b0da57f735dbb317f993575602ff7b6969fa423fb12b8fad88a9c1575aa5bc479d47ce0287ec7b2f"))
+			newBlock := SBC.GenBlock(txMPT, x, parentHash, mineAddress, &newAccountTrie)
 			accounts[newAccountTrie.Root] = &newAccountTrie
 			peersJSON, _ := Peers.PeerMapToJson()
-			newBlock := SBC.GenBlock(txMPT, x, parentHash, newAccountTrie.Root)
 			heartBeat := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), newBlock, peersJSON, SELF_ADDR)
 			heartBeatJSON, _ := heartBeat.EncodeToJSON()
 			sendHeartBeat(heartBeatJSON)
@@ -519,12 +514,16 @@ func validateTx(signedTx *data.SignedTransaction, prevBalanceRoot string) bool {
 	return true
 }
 
-func GetAccountBalanceFork(w http.ResponseWriter, r *http.Request) {
+func GetAccountFork(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	publicKey := vars["publicKey"]
 	blocks := SBC.GetLatestBlocks()
-	for i, block := range blocks {
-		fmt.Fprintf(w, "%d balance: %d\n", i, GetAccountBalance(publicKey, block.Header.AccountsRoot))
+	for _, block := range blocks {
+		account, valid := GetAccountByPublicKey(publicKey, block.Header.AccountsRoot)
+		if valid{
+			accountJSON,_:=account.EncodeToJSON()
+			fmt.Fprint(w, accountJSON)
+		}
 	}
 }
 
@@ -535,19 +534,17 @@ func ShowBalance(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetAccountBalance(publicKey string, accountsRoot string) int {
-	fmt.Println("Public Key: ", publicKey)
+func GetAccountByPublicKey(publicKey string, accountsRoot string) (bc.Account, bool) {
 	accountsTrie := accounts[accountsRoot]
 	// for key, value := range accountsTrie.KeyVal {
 	// 	fmt.Println(key, " - ", value)
 	// }
 	accountJSON, _ := accountsTrie.Get(publicKey)
-	fmt.Println("Accounts: ", accountJSON)
 	account, err := bc.DecodeAccountFromJSON(accountJSON)
 	if accountJSON == "" || err != nil {
-		return 0
+		return account, false
 	}
-	return account.Balance
+	return account, true
 }
 
 func GetGameInformation(w http.ResponseWriter, r *http.Request) {

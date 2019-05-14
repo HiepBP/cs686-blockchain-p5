@@ -7,12 +7,15 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
+	"io/ioutil"
 
 	"../network"
 	"../network/data"
 	"../wallet"
 	"./helpers"
 	"./models"
+	"../blockchain"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -66,11 +69,17 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 func Index(w http.ResponseWriter, r *http.Request) {
 	publicKey := helpers.CheckLogin(r)
 	if !helpers.IsEmpty(publicKey) {
+		account := getAccount(publicKey)
+		balance := account.Balance
 		var indexBody, _ = helpers.LoadFile("templates/index.html")
-		fmt.Fprintf(w, indexBody, publicKey)
+		fmt.Fprintf(w, indexBody, publicKey, balance)
 	} else {
 		http.Redirect(w, r, "/login", 302)
 	}
+}
+
+func Show(w http.ResponseWriter, r *http.Request) {
+	network.Show(w, r)
 }
 
 func CreateGame(w http.ResponseWriter, r *http.Request) {
@@ -80,34 +89,62 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 	} else {
 		r.ParseForm()
 		choice := r.FormValue("choice")
-		gameValue, _ := strconv.ParseFloat(r.FormValue("gameValue"), 32)
+		gameValue, _ := strconv.Atoi(r.FormValue("gameValue"))
 		secretNumber := r.FormValue("secretNumber")
 		privateKey := r.FormValue("privateKey")
 
 		dealerHash := sha3.Sum256([]byte(choice + secretNumber))
-		game := models.Game{
-			ID:           1,
-			Dealer:       publicKey,
-			DealerChoice: 0,
-			DealerHash:   hex.EncodeToString(dealerHash[:]),
-			Player:       "",
-			PlayerChoice: 0,
-			GameValue:    int(gameValue),
-			Result:       0,
-			Closed:       false,
+		game := models.GameCreate{
+			DealerHash: hex.EncodeToString(dealerHash[:]),
 		}
-		// fmt.Println(publicKey)
-		// fmt.Println(privateKey)
 		gameJSON, _ := game.EncodeToJSON()
-		// data := models.UserMsg{
-		// 	Signature: "CreateGame",
-		// 	Data:      gameJSON,
-		// }
-		// dataJSON, _ := data.EncodeToJSON()
 		transaction := data.Transaction{
 			FromAddress: publicKey,
 			ToAddress:   CreateGameAddress,
-			Value:       game.GameValue,
+			TimeStamp:   time.Now().Unix(),
+			Value:       gameValue,
+			Data:        gameJSON,
+		}
+		//Fake transaction with timestamp
+		transaction.ID = hex.EncodeToString(transaction.Hash())
+		txJSON, _ := transaction.EncodeToJSON()
+		signature, _ := wallet.SignData(txJSON, privateKey)
+		valid, _ := wallet.ValidateSignature(txJSON, signature, publicKey)
+		if !valid {
+			fmt.Fprintln(w, "Invalid key")
+			return
+		}
+		fmt.Println(txJSON)
+		signedTx := data.SignedTransaction{
+			Transaction: transaction,
+			Signature:   signature,
+		}
+		go sendTx(signedTx)
+		var body, _ = helpers.LoadFile("templates/info.html")
+		fmt.Fprintf(w, body, "Create Game")
+	}
+}
+
+func JoinGame(w http.ResponseWriter, r *http.Request) {
+	publicKey := helpers.CheckLogin(r)
+	if helpers.IsEmpty(publicKey) {
+		http.Redirect(w, r, "/login", 302)
+	} else {
+		r.ParseForm()
+		choice, _ := strconv.Atoi(r.FormValue("choice"))
+		gameValue, _ := strconv.Atoi(r.FormValue("gameValue"))
+		id, _ := strconv.Atoi(r.FormValue("id"))
+		privateKey := r.FormValue("privateKey")
+		game := models.GameJoin{
+			ID:           uint32(id),
+			PlayerChoice: uint32(choice),
+		}
+		gameJSON, _ := game.EncodeToJSON()
+		transaction := data.Transaction{
+			FromAddress: publicKey,
+			ToAddress:   JoinGameAddress,
+			TimeStamp:   time.Now().Unix(),
+			Value:       gameValue,
 			Data:        gameJSON,
 		}
 		transaction.ID = hex.EncodeToString(transaction.Hash())
@@ -123,28 +160,139 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 			Transaction: transaction,
 			Signature:   signature,
 		}
-		sendTx(signedTx)
-		fmt.Fprintf(w, "Please wait for your game to be created")
+		go sendTx(signedTx)
+		var body, _ = helpers.LoadFile("templates/info.html")
+		fmt.Fprintf(w, body, "Join Game")
 	}
 }
 
-func Show(w http.ResponseWriter, r *http.Request) {
-	network.Show(w, r)
+func RevealGame(w http.ResponseWriter, r *http.Request) {
+	publicKey := helpers.CheckLogin(r)
+	if helpers.IsEmpty(publicKey) {
+		http.Redirect(w, r, "/login", 302)
+	} else {
+		r.ParseForm()
+		choice, _ := strconv.Atoi(r.FormValue("choice"))
+		gameValue, _ := strconv.Atoi(r.FormValue("gameValue"))
+		secretNumber := r.FormValue("secretNumber")
+		id, _ := strconv.Atoi(r.FormValue("id"))
+		privateKey := r.FormValue("privateKey")
+		game := models.GameReveal{
+			ID:           uint32(id),
+			DealerChoice: uint32(choice),
+			SecretNumber: secretNumber,
+		}
+		gameJSON, _ := game.EncodeToJSON()
+		transaction := data.Transaction{
+			FromAddress: publicKey,
+			ToAddress:   RevealChoiceAddress,
+			TimeStamp:   time.Now().Unix(),
+			Value:       gameValue,
+			Data:        gameJSON,
+		}
+		transaction.ID = hex.EncodeToString(transaction.Hash())
+		txJSON, _ := transaction.EncodeToJSON()
+		signature, _ := wallet.SignData(txJSON, privateKey)
+		valid, _ := wallet.ValidateSignature(txJSON, signature, publicKey)
+		if !valid {
+			fmt.Fprintln(w, "Invalid key")
+			return
+		}
+		fmt.Println(txJSON)
+		signedTx := data.SignedTransaction{
+			Transaction: transaction,
+			Signature:   signature,
+		}
+		go sendTx(signedTx)
+		var body, _ = helpers.LoadFile("templates/info.html")
+		fmt.Fprintf(w, body, "Reveal Game")
+	}
+}
+
+func Games(w http.ResponseWriter, r *http.Request){
+	publicKey := helpers.CheckLogin(r)
+	if helpers.IsEmpty(publicKey) {
+		http.Redirect(w, r, "/login", 302)
+	} else{gameAccount := getAccount(network.ContractAddress)
+		games, _ := data.DecodeGameListFromJSON(gameAccount.Data)
+		for _, game := range games{
+			dealerChoice := "?"
+			playerChoice := "?"
+			switch game.DealerChoice {
+			case 1:
+				dealerChoice = "rock"
+			case 2:
+				dealerChoice = "paper"
+			case 3:
+				dealerChoice = "scissors"	
+			}
+			if game.Player==""{
+				fmt.Fprintf(w, "ID: %d - Bet: %d \nDealer: %s - Dealer Choice: %s\n\n",
+					game.ID, game.DealerValue, game.Dealer[:5], dealerChoice)
+			} else {
+				switch game.PlayerChoice {
+				case 1:
+					playerChoice = "rock"
+				case 2:
+					playerChoice = "paper"
+				case 3:
+					playerChoice = "scissors"	
+				}
+				if game.DealerChoice==0{
+					fmt.Fprintf(w, "ID: %d - Bet: %d \nDealer: %s - Dealer Choice: %s \nPlayer: %s - Player Choice: %s\n\n",
+						game.ID, game.DealerValue, game.Dealer[:5], dealerChoice, game.Player[:5], playerChoice)
+				} else {
+					result := "Draw"
+					switch game.Result{
+					case 201:
+						result = "Dealer Win"
+					case 102:
+						result = "Player Win"
+					}
+					fmt.Fprintf(w, "ID: %d - Bet: %d - Result: %s \nDealer: %s - Dealer Choice: %s \nPlayer: %s - Player Choice: %s\n\n",
+						game.ID, game.DealerValue, result, game.Dealer[:5], dealerChoice, game.Player[:5], playerChoice)
+				}
+			}
+		}
+	}
+	
 }
 
 func sendTx(signedTx data.SignedTransaction) {
 	signedTxJSON, _ := signedTx.EncodeToJSON()
 	peers := network.Peers.Copy()
 	for addr := range peers {
-		_, err := http.Post(addr+"/handleTx", "application/json", bytes.NewBuffer([]byte(signedTxJSON)))
-		if err != nil {
-			fmt.Println("Peer not available")
-			network.Peers.Delete(addr)
-		}
+		currAddr := addr
+		go func() {
+			_, err := http.Post(currAddr+"/handleTx", "application/json", bytes.NewBuffer([]byte(signedTxJSON)))
+			if err != nil {
+				fmt.Println("Peer not available")
+				network.Peers.Delete(currAddr)
+			}
+		}()
+
 	}
 }
 
 func downPeerList(portNumber int32) {
 	network.RegisterLocal(portNumber)
 	network.DownloadPeerList()
+}
+
+func getAccount(publicKey string) bc.Account{
+	peers := network.Peers.Copy()
+	for addr := range peers {
+		response, err := http.Get(addr + "/accounts/" + publicKey)
+		if err != nil {
+			fmt.Println("Peer not available")
+			network.Peers.Delete(addr)
+		} else {
+			accountJSONBuffer, _ := ioutil.ReadAll(response.Body)
+			accountJSON := string(accountJSONBuffer)
+			account,_ := bc.DecodeAccountFromJSON(accountJSON)
+			return account
+		}
+
+	}
+	return bc.Account{}
 }

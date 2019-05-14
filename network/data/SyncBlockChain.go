@@ -8,6 +8,8 @@ import (
 	"../../mpt"
 )
 
+var blockReward = 5
+
 //SyncBlockChain contain the BlockChain and sync support
 type SyncBlockChain struct {
 	bc  bc.BlockChain
@@ -84,16 +86,22 @@ func (sbc *SyncBlockChain) BlockChainToJson() (string, error) {
 
 //GenBlock will create new block from MPT
 func (sbc *SyncBlockChain) GenBlock(mpt mpt.MerklePatriciaTrie, nonce string,
-	parentHash string, accountsRoot string) bc.Block {
+	parentHash string, minedBy string, accountTrie *mpt.MerklePatriciaTrie) bc.Block {
 	height := sbc.bc.Length
 
 	var result bc.Block
 	// currentTime, _ := strconv.ParseInt(time.Now().Format(time.RFC850), 10, 64)
 	currentTime := time.Now().Unix()
+	//Add reward
+	minerAccountJSON, _ := accountTrie.Get(minedBy)
+	minerAccount, _ := bc.DecodeAccountFromJSON(minerAccountJSON)
+	minerAccount.Balance = minerAccount.Balance + blockReward
+	minerAccountJSON, _ = minerAccount.EncodeToJSON()
+	accountTrie.Insert(minedBy, minerAccountJSON)
 	if parentHash != "" {
-		result = bc.Initial(height+1, currentTime, parentHash, mpt, nonce, accountsRoot)
+		result = bc.Initial(height+1, currentTime, parentHash, mpt, nonce, accountTrie.Root, minedBy, blockReward)
 	} else {
-		result = bc.Initial(height+1, currentTime, "", mpt, nonce, accountsRoot)
+		result = bc.Initial(height+1, currentTime, "", mpt, nonce, accountTrie.Root, minedBy, blockReward)
 	}
 	return result
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login</title>
+    <title>Index</title>
 
     <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
@@ -26,7 +26,8 @@
     <div class="log-form container">
         <h1>Index</h1>
         <hr>
-        <small>User: %s</small>
+        <small>User: %s</small><br/>
+        <small>Balance: %d</small>
         <form method="POST" action="/logout">
             <button type="submit">Logout</button>
         </form>
@@ -51,6 +52,48 @@
 
             <button type="submit">Create</button>
         </form>
+        <br/>
+        <br/>
+        <br/>
+        <h1>Join game</h1>
+        <hr>
+        <form method="POST" action="/games/join">
+            <label>Game Id</label>
+            <input type="number" name="id"><br/>
+            <label for="choice">Your choice</label>
+            <input type="radio" name="choice" value="1" checked>Rock
+            <input type="radio" name="choice" value="2">Paper
+            <input type="radio" name="choice" value="3">Scissors
+            <br/>
+            <label>Money</label>
+            <input type="number" name="gameValue"><br/>
+
+            <label>Private Key</label>
+            <input type="password" name="privateKey"><br/>
+
+            <button type="submit">Join</button>
+        </form>
+        <br/>
+        <br/>
+        <br/>
+        <h1>Reveal game</h1>
+        <hr>
+        <form method="POST" action="/games/reveal">
+            <label>Game Id</label>
+            <input type="number" name="id"><br/>
+            <label for="choice">Your choice</label>
+            <input type="radio" name="choice" value="1" checked>Rock
+            <input type="radio" name="choice" value="2">Paper
+            <input type="radio" name="choice" value="3">Scissors
+            <br/>
+            <label for="secretNumber">Secret Number</label>
+            <input type="password" name="secretNumber"><br/> 
+            <label>Private Key</label>
+            <input type="password" name="privateKey"><br/>
+
+            <button type="submit">Join</button>
+        </form>
+        
     </div>
 </body>
 </html>

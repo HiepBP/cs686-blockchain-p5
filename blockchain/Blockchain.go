@@ -81,7 +81,6 @@ func (blockChain *BlockChain) EncodeToJSON() (string, error) {
 	}
 	jsonByte, _ := json.Marshal(elements)
 	result = string(jsonByte)
-	fmt.Println(string(jsonByte))
 	return result, nil
 }
 

@@ -7,9 +7,10 @@ type Game struct {
 	Dealer       string `json:"dealer"`
 	DealerChoice uint32 `json:"dealerChoice"`
 	DealerHash   string `json:"dealerHash"`
+	DealerValue    int    `json:"dealerValue"`
 	Player       string `json:"player"`
 	PlayerChoice uint32 `json:"playerChoice"`
-	GameValue    int    `json:"gameValue"`
+	PlayerValue int `json:"playerValue"`
 	Result       uint32 `json:"result"`
 	Closed       bool   `json:"closed"`
 }
@@ -26,7 +27,7 @@ type GameJoin struct {
 type GameReveal struct {
 	ID           uint32 `json:"ID"`
 	DealerChoice uint32 `json:"DealerChoice"`
-	SecretNumber uint32 `json:"SecretNumber"`
+	SecretNumber string `json:"SecretNumber"`
 }
 
 func DecodeGameFromJSON(jsonString string) (Game, error) {

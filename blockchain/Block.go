@@ -19,11 +19,13 @@ type Header struct {
 	Timestamp int64 `json:"timestamp"` //UNIX timestamp 1550013938
 	// hash_string = string(b.Header.Height) + string(b.Header.timestamp) + b.Header.ParentHash + b.Value.Root + string(b.Header.Size)
 	// SHA3-256 encoded value of this string (follow this specific order)
-	Hash         string
+	Hash         string `json:"hash"`
 	ParentHash   string `json:"parentHash"`
 	Size         int32  `json:"size"`
 	Nonce        string `json:"nonce"`
 	AccountsRoot string `json:"accountsRoot"`
+	MinedBy string `json:"minedBy"`
+	BlockReward int `json:"blockReward"`
 }
 
 //Block contains header and value
@@ -44,12 +46,15 @@ type BlockCustom struct {
 	Value        map[string]string `json:"mpt"`
 	Nonce        string            `json:"nonce"`
 	AccountsRoot string            `json:"accountsRoot"`
+	MinedBy string `json:"minedBy"`
+	BlockReward int `json:"blockReward"`
 }
 
 //Initial function takes arguments(such as height, parentHash, and value of MPT type)
 //Then forms a block
 func Initial(height int32, timestamp int64, parentHash string,
-	mpt p1.MerklePatriciaTrie, nonce string, accountsRoot string) Block {
+	mpt p1.MerklePatriciaTrie, nonce string, accountsRoot string,
+	minedBy string, blockReward int) Block {
 	var result Block
 	var size int32
 
@@ -71,12 +76,14 @@ func Initial(height int32, timestamp int64, parentHash string,
 	result.Header.Timestamp = timestamp
 	result.Header.Nonce = nonce
 	result.Header.AccountsRoot = accountsRoot
+	result.Header.MinedBy = minedBy
+	result.Header.BlockReward = blockReward
 	return result
 }
 
 func Genesis(accountsRoot string) Block {
 	currentTime := time.Now().Unix()
-	return Initial(0, currentTime, "", p1.MerklePatriciaTrie{}, "", accountsRoot)
+	return Initial(0, currentTime, "", p1.MerklePatriciaTrie{}, "", accountsRoot,"",0)
 }
 
 //DecodeFromJSON function takes a string represents the json value of a block,
@@ -125,6 +132,8 @@ func (block *BlockCustom) toBlock() Block {
 	result.Header.Timestamp = block.Timestamp
 	result.Header.Nonce = block.Nonce
 	result.Header.AccountsRoot = block.AccountsRoot
+	result.Header.MinedBy = block.MinedBy
+	result.Header.BlockReward = block.BlockReward
 	return result
 }
 
@@ -141,6 +150,8 @@ func (block *Block) toBlockCustom() BlockCustom {
 	result.Timestamp = block.Header.Timestamp
 	result.Nonce = block.Header.Nonce
 	result.AccountsRoot = block.Header.AccountsRoot
+	result.MinedBy = block.Header.MinedBy
+	result.BlockReward = block.Header.BlockReward
 	return result
 }
 

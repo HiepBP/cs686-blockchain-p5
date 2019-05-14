@@ -76,7 +76,7 @@ var routes = Routes{
 		"GetAccountBalaceFork",
 		"GET",
 		"/accounts/{publicKey}",
-		GetAccountBalanceFork,
+		GetAccountFork,
 	},
 	Route{
 		"ShowBalance",

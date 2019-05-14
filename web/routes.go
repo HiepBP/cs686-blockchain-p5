@@ -54,4 +54,22 @@ var routes = Routes{
 		"/games/create",
 		CreateGame,
 	},
+	Route{
+		"JoinGame",
+		"POST",
+		"/games/join",
+		JoinGame,
+	},
+	Route{
+		"RevealGame",
+		"POST",
+		"/games/reveal",
+		RevealGame,
+	},
+	Route{
+		"Games",
+		"GET",
+		"/games",
+		Games,
+	},
 }

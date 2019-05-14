@@ -21,12 +21,21 @@ type Transaction struct {
 	ToAddress   string `json:"toAddress"`   //PublicKey
 	Value       int    `json:"value"`       //Money
 	Data        string `json:"data"`        //Data of the game
+	TimeStamp   int64  `json:"timeStamp"`
 }
 
 //SignedTransaction will be send between nodes in Network
 type SignedTransaction struct {
 	Transaction Transaction `json:"transaction"`
 	Signature   []byte      `json:"signature"`
+}
+
+type InternalTx struct {
+	ParentTxHash string `json:"parentTxHash"`
+	FromAddress  string `json:"fromAddress"`
+	ToAddress    string `json:"toAddress"`
+	Value        string `json:"value"`
+	TimeStamp    int64  `json:"timeStamp"`
 }
 
 //DecodeTransactionFromJSON function takes a string represents the json value of a Transaction,
@@ -77,6 +86,27 @@ func (signedTransaction *SignedTransaction) EncodeToJSON() (string, error) {
 	return result, nil
 }
 
+func DecodeInternalTxFromJSON(jsonString string) (InternalTx, error) {
+	var result InternalTx
+
+	err := json.Unmarshal([]byte(jsonString), &result)
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (internalTx *InternalTx) EncodeToJSON() (string, error) {
+	var result string
+
+	internalTxByte, err := json.Marshal(&internalTx)
+	if err != nil {
+		return result, err
+	}
+	result = string(internalTxByte)
+	return result, nil
+}
+
 func (tx *Transaction) Hash() []byte {
 	var hash [32]byte
 
@@ -122,31 +152,21 @@ func GetSignedTxsFromMPT(txsTrie mpt.MerklePatriciaTrie) []SignedTransaction {
 	return result
 }
 
-func AddTransaction(accountTrie mpt.MerklePatriciaTrie,
-	signedTxsTrie mpt.MerklePatriciaTrie) mpt.MerklePatriciaTrie {
+func AddTransaction(accountTrie mpt.MerklePatriciaTrie, signedTxsTrie mpt.MerklePatriciaTrie) mpt.MerklePatriciaTrie {
 	signedTxs := GetSignedTxsFromMPT(signedTxsTrie)
 	for _, signedTx := range signedTxs {
 		tx := signedTx.Transaction
-		fmt.Println(string([]rune(tx.ToAddress)[:len(ContractAddress)]))
 		if string([]rune(tx.ToAddress)[:len(ContractAddress)]) == ContractAddress {
 			fmt.Println("Handle game contract")
-			gameAccountJSON, _ := accountTrie.Get(ContractAddress)
-			gameAccount, _ := bc.DecodeAccountFromJSON(gameAccountJSON)
-			gameList, _ := DecodeGameListFromJSON(gameAccount.Data)
-			gameList, ok := HandleGameContract(tx, gameList)
+			ok := HandleGameContract(tx, &accountTrie)
 			if ok {
-				gameListJSON, _ := EncodeGameListToJSON(gameList)
-				gameAccount.Data = gameListJSON
-				gameAccountJSON, _ := gameAccount.EncodeToJSON()
 				//Change function address to contract address to update balance
 				tx.ToAddress = ContractAddress
-				accountTrie.Insert(tx.ToAddress, gameAccountJSON)
 				Rebalance(&accountTrie, tx)
 			}
 		} else { //Transfer money contract
 			Rebalance(&accountTrie, tx)
 		}
-
 	}
 	return accountTrie
 }
