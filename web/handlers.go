@@ -92,6 +92,7 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 		gameValue, _ := strconv.Atoi(r.FormValue("gameValue"))
 		secretNumber := r.FormValue("secretNumber")
 		privateKey := r.FormValue("privateKey")
+		fee, _ := strconv.Atoi(r.FormValue("fee"))
 
 		dealerHash := sha3.Sum256([]byte(choice + secretNumber))
 		game := models.GameCreate{
@@ -104,6 +105,7 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 			TimeStamp:   time.Now().Unix(),
 			Value:       gameValue,
 			Data:        gameJSON,
+			Fee: fee,
 		}
 		//Fake transaction with timestamp
 		transaction.ID = hex.EncodeToString(transaction.Hash())
@@ -135,6 +137,7 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 		gameValue, _ := strconv.Atoi(r.FormValue("gameValue"))
 		id, _ := strconv.Atoi(r.FormValue("id"))
 		privateKey := r.FormValue("privateKey")
+		fee, _ := strconv.Atoi(r.FormValue("fee"))
 		game := models.GameJoin{
 			ID:           uint32(id),
 			PlayerChoice: uint32(choice),
@@ -146,6 +149,7 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 			TimeStamp:   time.Now().Unix(),
 			Value:       gameValue,
 			Data:        gameJSON,
+			Fee: fee,
 		}
 		transaction.ID = hex.EncodeToString(transaction.Hash())
 		txJSON, _ := transaction.EncodeToJSON()
@@ -177,6 +181,7 @@ func RevealGame(w http.ResponseWriter, r *http.Request) {
 		secretNumber := r.FormValue("secretNumber")
 		id, _ := strconv.Atoi(r.FormValue("id"))
 		privateKey := r.FormValue("privateKey")
+		fee, _ := strconv.Atoi(r.FormValue("fee"))
 		game := models.GameReveal{
 			ID:           uint32(id),
 			DealerChoice: uint32(choice),
@@ -189,6 +194,7 @@ func RevealGame(w http.ResponseWriter, r *http.Request) {
 			TimeStamp:   time.Now().Unix(),
 			Value:       gameValue,
 			Data:        gameJSON,
+			Fee: fee,
 		}
 		transaction.ID = hex.EncodeToString(transaction.Hash())
 		txJSON, _ := transaction.EncodeToJSON()

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 
 	bc "../../blockchain"
 	"../../mpt"
@@ -22,20 +23,13 @@ type Transaction struct {
 	Value       int    `json:"value"`       //Money
 	Data        string `json:"data"`        //Data of the game
 	TimeStamp   int64  `json:"timeStamp"`
+	Fee int `json:"fee"`
 }
 
 //SignedTransaction will be send between nodes in Network
 type SignedTransaction struct {
 	Transaction Transaction `json:"transaction"`
 	Signature   []byte      `json:"signature"`
-}
-
-type InternalTx struct {
-	ParentTxHash string `json:"parentTxHash"`
-	FromAddress  string `json:"fromAddress"`
-	ToAddress    string `json:"toAddress"`
-	Value        string `json:"value"`
-	TimeStamp    int64  `json:"timeStamp"`
 }
 
 //DecodeTransactionFromJSON function takes a string represents the json value of a Transaction,
@@ -86,27 +80,6 @@ func (signedTransaction *SignedTransaction) EncodeToJSON() (string, error) {
 	return result, nil
 }
 
-func DecodeInternalTxFromJSON(jsonString string) (InternalTx, error) {
-	var result InternalTx
-
-	err := json.Unmarshal([]byte(jsonString), &result)
-	if err != nil {
-		return result, err
-	}
-	return result, nil
-}
-
-func (internalTx *InternalTx) EncodeToJSON() (string, error) {
-	var result string
-
-	internalTxByte, err := json.Marshal(&internalTx)
-	if err != nil {
-		return result, err
-	}
-	result = string(internalTxByte)
-	return result, nil
-}
-
 func (tx *Transaction) Hash() []byte {
 	var hash [32]byte
 
@@ -149,6 +122,9 @@ func GetSignedTxsFromMPT(txsTrie mpt.MerklePatriciaTrie) []SignedTransaction {
 			result = append(result, signedTx)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Transaction.ID < result[j].Transaction.ID
+	})
 	return result
 }
 
@@ -163,7 +139,7 @@ func AddTransaction(accountTrie mpt.MerklePatriciaTrie, signedTxsTrie mpt.Merkle
 				//Change function address to contract address to update balance
 				tx.ToAddress = ContractAddress
 				Rebalance(&accountTrie, tx)
-			}
+			} 
 		} else { //Transfer money contract
 			Rebalance(&accountTrie, tx)
 		}
@@ -176,7 +152,7 @@ func Rebalance(accountTrie *mpt.MerklePatriciaTrie, tx Transaction) {
 	ToAccountJSON, _ := accountTrie.Get(tx.ToAddress)
 	FromAccount, _ := bc.DecodeAccountFromJSON(FromAccountJSON)
 	ToAccount, _ := bc.DecodeAccountFromJSON(ToAccountJSON)
-	FromAccount.Balance = FromAccount.Balance - tx.Value
+	FromAccount.Balance = FromAccount.Balance - tx.Value - tx.Fee
 	ToAccount.Balance = ToAccount.Balance + tx.Value
 	FromAccountJSON, _ = FromAccount.EncodeToJSON()
 	ToAccountJSON, _ = ToAccount.EncodeToJSON()

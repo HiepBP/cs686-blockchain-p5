@@ -120,7 +120,7 @@ func CloseGame(gameID uint32, gameAccount *bc.Account, accountTrie *mpt.MerklePa
 		fmt.Println("PLAYER WIN")
 		transfer(gameAccount, game.Player, game.DealerValue + game.PlayerValue, accountTrie)
 	} else if result == DRAW {
-		fmt.Println("DRAW WIN")
+		fmt.Println("DRAW")
 		transfer(gameAccount, game.Dealer, game.DealerValue, accountTrie)
 		transfer(gameAccount, game.Player, game.PlayerValue, accountTrie)
 	}

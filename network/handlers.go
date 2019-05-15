@@ -1,6 +1,7 @@
 package network
 
 import (
+	"sort"
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
@@ -27,7 +28,7 @@ var (
 	PEERS_DOWNLOAD_URL = FIRST_ADDR + "/peers"
 	SELF_ADDR          = "http://localhost:8081"
 	MAX_PEER           = 32
-
+	minTx = 1
 	mineAddress     string
 	blocksInTransit = [][]byte{}
 	memoryPool      = make(map[string]*data.SignedTransaction)
@@ -205,6 +206,7 @@ func HeartBeatReceive(w http.ResponseWriter, r *http.Request) {
 			minerAccount.Balance = minerAccount.Balance + block.Header.BlockReward
 			minerAccountJSON, _ = minerAccount.EncodeToJSON()
 			newAccountTrie.Insert(block.Header.MinedBy, minerAccountJSON)
+			fmt.Println("Account root:", newAccountTrie.Root)
 			if newAccountTrie.Root != block.Header.AccountsRoot {
 				fmt.Println("WEIRD")
 			} else {
@@ -255,10 +257,10 @@ func HandleTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	memoryPool[signedTransaction.Transaction.ID] = &signedTransaction
-	startTryingNonces()
-	// if len(memoryPool) >= 2 && len(mineAddress) > 0 {
-	// 	startTryingNonces()
-	// }
+	// startTryingNonces()
+	if len(memoryPool) >= minTx && len(mineAddress) > 0 {
+		startTryingNonces()
+	}
 }
 
 func initPeer(portNumber int32) {
@@ -379,6 +381,7 @@ func sendHeartBeat(heartBeatJSON string) {
 func startTryingNonces() {
 	//Solve puzzle
 	for len(memoryPool) > 0 {
+		fmt.Printf("\nStart Trying Nonce:%d\n\n",len(memoryPool))
 		rand.Seed(time.Now().UnixNano())
 		y := ""
 		//Get parents block
@@ -407,14 +410,16 @@ func startTryingNonces() {
 			Peers.Rebalance()
 			//Update balance in accounts Trie, delete the old root in accounts hashmap
 			newAccountTrie := data.AddTransaction(accounts[parentBlock.Header.AccountsRoot].Copy(), txMPT)
-			newBlock := SBC.GenBlock(txMPT, x, parentHash, mineAddress, &newAccountTrie)
+			newBlock, newAccountTrie := SBC.GenBlock(txMPT, x, parentHash, mineAddress, newAccountTrie)
 			accounts[newAccountTrie.Root] = &newAccountTrie
+			fmt.Println("New Trie: ",newAccountTrie.Root)
 			peersJSON, _ := Peers.PeerMapToJson()
 			heartBeat := data.PrepareHeartBeatData(&SBC, Peers.GetSelfId(), newBlock, peersJSON, SELF_ADDR)
 			heartBeatJSON, _ := heartBeat.EncodeToJSON()
 			sendHeartBeat(heartBeatJSON)
 			deleteConfirmedTx(txIDs)
 		}
+		fmt.Printf("\nFinish trying nonces:%d\n\n",len(memoryPool))
 	}
 }
 
@@ -422,18 +427,26 @@ func createMPTFromMemPool(prevBalanceRoot string) (mpt.MerklePatriciaTrie, []str
 	result := mpt.MerklePatriciaTrie{}
 	var transactionsID []string
 	result.Initial()
-	//Get  transaction from memoryPool, check if it not confirmed yet
-	//Check address to see if it is gameAddress or not
-	for id, signedTransaction := range memoryPool {
+	//Sort the memory pool
+	var pl PairList
+	for id, signedTx := range memoryPool{
 		if confirmedTx[id] == true {
 			delete(memoryPool, id)
 			continue
 		}
-		if validateTx(signedTransaction, prevBalanceRoot) {
-			signedTxJSON, _ := signedTransaction.EncodeToJSON()
-			result.Insert(id, signedTxJSON)
+		pl = append(pl, Pair{id, signedTx.Transaction.Fee})
+	}
+	sort.Sort(sort.Reverse(pl))
+	//Get  transaction from memoryPool, check if it not confirmed yet
+	//Check address to see if it is gameAddress or not
+	accountTrie := accounts[prevBalanceRoot].Copy()
+	for _, txs := range pl {
+		signedTx := memoryPool[txs.Key]
+		if validateTx(signedTx, &accountTrie) {
+			signedTxJSON, _ := signedTx.EncodeToJSON()
+			result.Insert(signedTx.Transaction.ID, signedTxJSON)
 		}
-		transactionsID = append(transactionsID, id)
+		transactionsID = append(transactionsID, signedTx.Transaction.ID)
 	}
 	return result, transactionsID
 }
@@ -441,12 +454,12 @@ func createMPTFromMemPool(prevBalanceRoot string) (mpt.MerklePatriciaTrie, []str
 func validateReceiveTxsInBlock(txsTrie mpt.MerklePatriciaTrie, prevBalanceRoot string) (bool, []string) {
 	signedTxs := data.GetSignedTxsFromMPT(txsTrie)
 	var txsID []string
-	fmt.Println(prevBalanceRoot)
+	accountTrie := accounts[prevBalanceRoot].Copy()
 	for _, signedTx := range signedTxs {
 		if confirmedTx[signedTx.Transaction.ID] {
 			continue
 		}
-		if !validateTx(&signedTx, prevBalanceRoot) {
+		if !validateTx(&signedTx, &accountTrie) {
 			return false, nil
 		}
 		txsID = append(txsID, signedTx.Transaction.ID)
@@ -486,7 +499,8 @@ func validateBalance(publicKey string, amount int, prevBalanceRoot string) bool 
 	return true
 }
 
-func validateTx(signedTx *data.SignedTransaction, prevBalanceRoot string) bool {
+// func validateTx(signedTx *data.SignedTransaction, prevBalanceRoot string) bool {
+func validateTx(signedTx *data.SignedTransaction, balanceTrie *mpt.MerklePatriciaTrie) bool {
 	result, _ := wallet.ValidateTxSignature(signedTx.Transaction, signedTx.Signature)
 	if !result {
 		fmt.Println("Signature not correct")
@@ -494,23 +508,24 @@ func validateTx(signedTx *data.SignedTransaction, prevBalanceRoot string) bool {
 	}
 	from := string(signedTx.Transaction.FromAddress)
 	to := string(signedTx.Transaction.FromAddress)
-	// fmt.Println(accounts[prevBalanceRoot].String())
-	fromAccountJSON, _ := accounts[prevBalanceRoot].Get(from)
+	fromAccountJSON, _ := balanceTrie.Get(from)
 	if fromAccountJSON == "" {
 		fmt.Println("fromAccountJSON is empty")
 		return false
 	}
 	fromAccount, _ := bc.DecodeAccountFromJSON(fromAccountJSON)
-	if fromAccount.Balance <= signedTx.Transaction.Value {
+	if fromAccount.Balance < signedTx.Transaction.Value + signedTx.Transaction.Fee {
 		fmt.Println("balance not enough")
 		return false
 	}
-	toAccountJSON, _ := accounts[prevBalanceRoot].Get(to)
-	//If toAccount is empty, create account with balance = 0
+	toAccountJSON, _ := balanceTrie.Get(to)
 	if toAccountJSON == "" {
 		fmt.Println("toAccountJSON is empty")
 		return false
 	}
+	fromAccount.Balance -= (signedTx.Transaction.Value + signedTx.Transaction.Fee)
+	fromAccountJSON,_ = fromAccount.EncodeToJSON()
+	balanceTrie.Insert(from, fromAccountJSON)
 	return true
 }
 
@@ -561,3 +576,14 @@ func GetGameInformation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+type Pair struct {
+	Key string
+	Value int
+  }
+  
+type PairList []Pair
+  
+func (p PairList) Len() int { return len(p) }
+func (p PairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
+func (p PairList) Swap(i, j int){ p[i], p[j] = p[j], p[i] }
