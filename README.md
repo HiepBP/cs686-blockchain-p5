@@ -1,4 +1,8 @@
 # cs686-blockchain-p4
+[![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://nodesource.com/products/nsolid)
+
+[![Build Status](https://travis-ci.org/joemccann/dillinger.svg?branch=master)](https://travis-ci.org/joemccann/dillinger)
+
 
   
 
@@ -6,17 +10,16 @@
 
   
 
-![alt text](https://i.imgur.com/DwJa62g.jpg)
-
-  
+![System Work Flow](https://i.imgur.com/DwJa62g.jpg)   
+System work flow  
 
 <p>The network contain a web server; a beginning full node that generate genesis block and every other nodes will come there to get peer list and blockchain when start; a list of miners to mine block and validate transaction.</p>
 
 <p>Every node in the network will maintain a blockchain, a accounts information list, a peer slist, a memory pool for unvalidated transaction.</p>
   
   
-# Important Class
-## Transaction
+## Important Class
+### Transaction
 | Variable 	| Type 	| Description 	|
 |-------------	|--------	|----------------------------------------	|
 | ID 	| string 	| ID is a hash of the transaction detail 	|
@@ -27,13 +30,13 @@
 | Timestamp 	| int64 	|  	|
 | Fee 	| int 	| Fee for transaction 	|
 
-## SignedTransaction
+### SignedTransaction
 | Variable 	| Type 	| Description 	|
 |-------------	|--------	|----------------------------------------	|
 | Transaction 	| Transaction 	|  	|
 | Signature 	| []byte 	| The signature of current transaction 	|
 
-## Block
+### Block
 
 
 | Block 	| Type 	| Description 	|
@@ -69,41 +72,41 @@
   
   
 
-![alt text](https://i.imgur.com/5ckTWIB.jpg)
-How transaction be signed and send through network.<br/>
+![How Tx signex](https://i.imgur.com/5ckTWIB.jpg)   
+How transaction be signed and send through network.  
 
   
 
 ## Progress
 
-[x] Basic UI
+[x] Basic UI.  
 
-[x] Register and generate public, private key
+[x] Register and generate public, private key.  
 
-[x] Sign Tx function
+[x] Sign Tx function.  
 
-[x] Validate Tx is signed by a correct one
+[x] Validate Tx is signed by a correct one.  
 
-[x] Send account(public key) to other peers when create.
+[x] Send account(public key) to other peers when create.  
 
-[x] See balance base on public key
+[x] See balance base on public key.  
 
-[x] Classify Tx (Transfer coin Tx or Logic Tx)
+[x] Classify Tx (Transfer coin Tx or Logic Tx).  
 
-[x] Miner validate transaction is signed correctly
+[x] Miner validate transaction is signed correctly.  
 
-[x] Miner validate balance for each transaction
+[x] Miner validate balance for each transaction.  
 
-[x] Miner handle logic code to create game
+[x] Miner handle logic code to create game.  
 
-[x] Miner handle logic code to join game
+[x] Miner handle logic code to join game.  
 
-[x] Miner handle logic code to reveal choice and close game
+[x] Miner handle logic code to reveal choice and close game.  
 
-[x] User can see the game information
+[x] User can see the game information.  
 
-# Overall
-The application still have some problem
-1/ When Dealer create a game, if not one join it, dealer can not retrieve the money back
-2/ When Player join a game, if Player join a game and after that, Dealer does not reveal his choice, both Dealer and Player will not receive money back
-3/ The PoW algorithm need to be able to change the difficult base on the running time to generate previous block. Because i just set the constant difficult, so sometime it will too hard, sometime it will too easy.
+## Overall
+The application still have some problems:  
+1/ When Dealer create a game, if not one join it, dealer can not retrieve the money back.  
+2/ When Player join a game, if Player join a game and after that, Dealer does not reveal his choice, both Dealer and Player will not receive money back.  
+3/ The PoW algorithm need to be able to change the difficult base on the running time to generate previous block. Because i just set the constant difficult, so sometime it will too hard, sometime it will too easy.  
